@@ -1,247 +1,357 @@
-# Explicação do projeto: Minimax aplicado à guerra de preços em um duopólio
+# Explicação do projeto: Minimax na Fuga no Labirinto (estilo Tron)
 
 ## 1. O problema
 
-Em um **duopólio** duas empresas dominam o mercado e vendem produtos parecidos. Quando uma baixa o preço,
-rouba clientes da outra, e a outra tende a reagir: é a **guerra de preços**. Um concorrente muito agressivo pode
-até vender **abaixo do custo** (*dumping*), aceitando prejuízo temporário só para tirar clientes do rival.
+Um labirinto quadrado tem paredes espalhadas aleatoriamente. Dois agentes, **Azul** e **Laranja**, começam em lados
+opostos e a cada rodada **os dois andam uma célula ao mesmo tempo** (cima, direita, baixo ou esquerda), deixando um
+**rastro sólido** para trás, como as motos de luz do filme Tron. Um agente perde quando:
 
-A pergunta que o programa responde é:
+- bate em uma parede ou sai do tabuleiro;
+- bate no próprio rastro ou no rastro do oponente;
+- entra na mesma célula que o oponente na mesma rodada (colisão frontal: os dois perdem e dá **empate**).
 
-> **Qual preço a empresa deve cobrar para garantir o maior lucro possível no pior cenário, ou seja,
-> mesmo que o concorrente faça tudo para derrubar o lucro dela?**
+Não existe "comer peça" nem "dar xeque". O objetivo é **sobreviver mais tempo que o oponente**. Na prática, isso
+significa garantir para si a maior área livre possível (o "espaço vital") e deixar o oponente confinado numa área
+menor, para que ele fique sem saída antes.
 
-Esse valor se chama **lucro mínimo garantido** (em teoria dos jogos, *nível de segurança* ou estratégia *maximin*).
+## 2. Como o Minimax foi usado
 
-### O que foi acrescentado à sugestão original
+### 2.1 Os papéis MAX e MIN
 
-Se o jogo tivesse uma única rodada, o Minimax se resumiria a uma tabela: para cada preço da empresa, olhar a pior
-resposta do concorrente e escolher o melhor desses piores casos. Para o algoritmo realmente explorar uma
-**árvore de decisão**, o problema foi modelado com **várias rodadas** (trimestres) e com **memória entre as rodadas**:
+O Minimax é um algoritmo de decisão para jogos de dois jogadores com interesses opostos. Ele monta uma árvore com
+todas as jogadas possíveis dali para frente e supõe que:
 
-- **Fidelidade dos clientes**: quem comprou da empresa numa rodada tende a continuar comprando na próxima.
-  Perder clientes hoje prejudica o lucro de amanhã.
-- **Caixa limitado do concorrente**: o concorrente só consegue vender abaixo do custo enquanto tiver dinheiro
-  para cobrir o prejuízo. Se o caixa ficaria negativo, aquele preço não é permitido.
+- o **MAX** (o agente que está decidindo, o Azul) sempre escolhe a jogada de **maior** valor;
+- o **MIN** (o adversário, o Laranja) sempre escolhe a jogada de **menor** valor, ou seja, a resposta que mais
+  atrapalha o MAX.
 
-Com isso a decisão de hoje muda o que é possível amanhã, e o Minimax precisa olhar vários passos à frente.
+O valor de cada posição é medido **do ponto de vista do MAX**. Como o MIN sempre é considerado o mais esperto e
+agressivo possível, o valor que o Minimax encontra é uma **garantia**: é o melhor resultado que o Azul consegue
+assegurar contra **qualquer** resposta do Laranja.
 
-## 2. Por que o Minimax se aplica
+### 2.2 Jogo simultâneo modelado em turnos
 
-O Minimax é usado em jogos de **dois jogadores**, com **turnos alternados**, **informação perfeita** e
-**interesses opostos** (soma zero). Na modelagem:
+No Tron os dois jogadores andam **ao mesmo tempo**, mas o Minimax trabalha com **turnos alternados**. A solução,
+comum em inteligências artificiais para esse jogo, foi dividir cada rodada em dois níveis da árvore:
 
-- a **empresa** é o jogador **MAX**: quer o maior lucro possível;
-- o **concorrente** é o jogador **MIN**: escolhe o preço que deixa o lucro da empresa o menor possível.
+1. **Nível MAX**: o Azul escolhe uma direção. O movimento **ainda não é aplicado** no tabuleiro.
+2. **Nível MIN**: o Laranja escolhe a resposta. Só então os **dois movimentos são aplicados juntos** (função
+   `aplicarRodada`), verificando colisões, inclusive a frontal.
 
-Na vida real o concorrente quer maximizar o **próprio** lucro, e não necessariamente destruir o da empresa.
-Supor que ele é um adversário que só quer prejudicar é uma **hipótese pessimista proposital**: é justamente ela que
-permite falar em **garantia**. Se o concorrente fizer qualquer outra coisa (por exemplo, cuidar do próprio lucro),
-a empresa só pode lucrar **igual ou mais** do que o valor calculado. A seção 3 da saída do programa e os testes
-automatizados comprovam isso.
+Nesse modelo o MIN "enxerga" a jogada do MAX antes de responder. Essa é uma suposição **pessimista de propósito**:
+se o Azul estiver seguro mesmo contra um adversário que sabe o que ele vai fazer, estará seguro contra qualquer
+adversário real.
 
-## 3. Modelagem como jogo
+### 2.3 A árvore de decisão
 
-| Elemento do jogo | Como aparece no problema | Onde está no código |
+- **Raiz**: a situação atual do jogo, com a vez do Azul (nó MAX).
+- **Filhos de um nó MAX**: um nó MIN para cada direção segura do Azul.
+- **Filhos de um nó MIN**: um nó MAX para cada direção segura do Laranja, já com a rodada aplicada.
+- **Profundidade**: configurável de 1 a 5 **rodadas**, ou seja, de 2 a 10 níveis na árvore.
+- **Fator de ramificação**: no máximo 3 por nível, porque voltar para trás é sempre bater no próprio rastro. As
+  direções que batem em algo nem são geradas; se não sobrar nenhuma, o agente é obrigado a seguir em frente e bater.
+
+Com profundidade 4, a árvore pode ter até 3⁸ = 6.561 folhas, o que mostra por que a poda alfa-beta (seção 2.7) é útil.
+
+### 2.4 Estados finais: vitória, derrota e empate
+
+Quando um nó representa o **fim do jogo**, o valor é fixo e não depende da heurística:
+
+| Situação | Valor | Motivo |
 |---|---|---|
-| Jogadores | Empresa (MAX) e concorrente (MIN) | `e_a_vez_da_empresa` em `mercado.py` |
-| Estado | Rodada atual, fidelidade dos clientes, caixa do concorrente, lucros acumulados e o preço já anunciado | `EstadoDoMercado` |
-| Jogadas | Escolher um preço da lista `R$ 8, 12, 16, 20, 24` (o concorrente só pode escolher preços que consegue bancar) | `gerar_jogadas_possiveis` |
-| Ordem dos turnos | Em cada rodada a empresa anuncia o preço primeiro; o concorrente responde já sabendo dele | `anunciar_preco_da_empresa` e `aplicar_resposta_do_concorrente` |
-| Estado terminal | Todas as rodadas foram jogadas | `jogo_terminou` |
-| Função de utilidade | Lucro acumulado da empresa no fim do jogo | `avaliar_estado_final` |
+| Laranja bateu e o Azul sobreviveu | **1000 + rodadas que sobraram** | Vencer mais cedo vale mais. |
+| Azul bateu e o Laranja sobreviveu | **−(1000 + rodadas que sobraram)** | Se a derrota for inevitável, perder mais tarde é menos ruim. |
+| Os dois bateram na mesma rodada | **−500** | O empate é melhor que perder, mas pior que qualquer posição em que o jogo continua. |
 
-Cada rodada tem duas jogadas (empresa e concorrente), então a árvore tem **profundidade 2 × rodadas**
-(6 níveis no padrão de 3 rodadas) e **fator de ramificação de até 5** (os 5 preços possíveis).
+O valor do empate foi uma decisão importante. Na primeira versão ele valia 0, e o Azul às vezes batia de frente no
+Laranja de propósito só porque a posição alternativa valia −1 (uma célula a menos de território). Com −500, o agente
+só aceita empatar para escapar de uma derrota certa. Nas mesmas 30 partidas de teste, os empates do Azul
+(profundidade 4) contra o Laranja com profundidade 1 e 2 caíram de 6 e 9 para zero.
 
-O fato de o concorrente **ver o preço da empresa antes de responder** também é pessimista de propósito: é o pior
-cenário possível para a empresa, porque o adversário sempre tem a informação para dar a melhor resposta contra ela.
+### 2.5 Função de avaliação: território (o "espaço vital")
 
-## 4. Modelo econômico
+Na maioria das vezes a busca termina antes do fim do jogo (no limite de profundidade). Nesses nós, chamados
+**folhas**, a posição é avaliada por uma **heurística de território**, inspirada no diagrama de Voronoi:
 
-Em cada rodada, com preço da empresa `pE` e preço do concorrente `pC`:
+1. Uma **busca em largura (BFS)** calcula a distância do Azul até cada célula livre.
+2. Outra BFS faz o mesmo para o Laranja.
+3. Cada célula livre pertence a **quem chega nela primeiro**. Se os dois chegam ao mesmo tempo, ela é disputada e
+   não conta para ninguém. Células que ninguém alcança também não contam.
+4. **Valor = células do Azul − células do Laranja.**
 
-1. **Tamanho do mercado**: quanto mais caro o mercado, menos gente compra.
-   - `preço médio = (pE + pC) / 2`
-   - `fração que compra = 1 − preço médio / 40`, limitada entre 0 e 1 (R$ 40 é o preço máximo que o cliente aceita)
-   - `clientes no mercado = 1000 × fração que compra`
-2. **Divisão dos clientes**: parte vem da fidelidade, parte da diferença de preço.
-   - `participação da empresa = fidelidade + 0,05 × (pC − pE)`, limitada entre 0 e 1
-   - Cada R$ 1 mais barato que o concorrente rende 5 pontos percentuais de participação.
-3. **Lucro**: clientes × margem.
-   - `lucro da empresa = clientes da empresa × (pE − custo)`
-   - `lucro do concorrente = clientes do concorrente × (pC − custo)`, com custo de R$ 10 para as duas
-   - Se o preço é menor que o custo, a margem é negativa e o lucro vira prejuízo.
-4. **Memória para a próxima rodada**:
-   - `nova fidelidade = 0,6 × fidelidade anterior + 0,4 × participação desta rodada`
-   - `novo caixa do concorrente = caixa + lucro do concorrente`, e o concorrente não pode escolher um preço que deixe o caixa negativo.
+Esse número traduz o raciocínio do enunciado: *"se eu virar à direita, fico com uma área de 10 blocos; se virar à
+esquerda, deixo o inimigo confinado em 5 blocos"*. Quando os dois ficam separados por rastros, a heurística vira
+simplesmente a diferença entre os tamanhos das duas regiões, e quem tem mais espaço tende a sobreviver mais tempo.
 
-Exemplo da primeira rodada, com os dois cobrando R$ 12: preço médio 12, fração que compra `1 − 12/40 = 0,7`,
-700 clientes, 50% para cada um, lucro de `350 × (12 − 10) = R$ 700` para cada empresa.
+Na interface, a opção **Mostrar território** pinta cada célula com a cor do dono. É exatamente o que a função de
+avaliação está medindo.
 
-## 5. O que cada parte do código faz
+### 2.6 Exemplo de uma decisão
 
-O código foi dividido em módulos com uma responsabilidade cada. Todos os nomes de funções e variáveis foram
-escritos por extenso para o código se explicar sozinho, sem precisar de comentários.
+Posição usada nos testes automatizados (`#` = parede, `A` = Azul, `L` = Laranja):
 
-### 5.1 `mercado.py`: regras do mercado
+```
+#########
+##A.#####    Se o Azul for para a direita, entra num beco de uma célula só.
+##.######    Se for para baixo, chega à área aberta.
+##......#
+##......#
+##......#
+##......#
+##.....L#
+#########
+```
 
-É o "tabuleiro" do jogo: sabe calcular o que acontece numa rodada, mas não sabe nada de Minimax.
+**Com profundidade 1** (uma rodada, 2 níveis):
 
-- **`ConfiguracaoDoMercado`**: guarda todos os parâmetros do problema (preços possíveis, custos, número de clientes,
-  sensibilidade a preço, peso da fidelidade, caixa inicial do concorrente e número de rodadas). Tem valores padrão e
-  é imutável (`frozen=True`). O método `__post_init__` valida a configuração: exige pelo menos uma rodada, pelo menos
-  um preço, caixa não negativo e pelo menos um preço em que o concorrente não tenha prejuízo (senão ele poderia ficar
-  sem nenhuma jogada válida).
-- **`EstadoDoMercado`**: uma "fotografia" do jogo num momento: rodada atual, fidelidade da empresa, caixa do
-  concorrente, lucros acumulados e o preço que a empresa anunciou na rodada (ou `None`, se ainda é a vez dela).
-  É imutável: cada jogada cria um estado novo em vez de alterar o anterior. Isso simplifica o Minimax, porque não é
-  preciso "desfazer" jogadas ao voltar na árvore.
-- **`ResultadoDaRodada`**: o resultado de uma rodada (clientes no mercado, participação, clientes e lucro de cada lado).
-- **`criar_estado_inicial`**: monta o estado da rodada 0 a partir da configuração.
-- **`jogo_terminou`**: diz se todas as rodadas já foram jogadas (estado terminal da árvore).
-- **`e_a_vez_da_empresa`**: é a vez da empresa quando ela ainda não anunciou preço na rodada atual.
-- **`limitar_entre_zero_e_um`**: garante que frações e participações fiquem entre 0% e 100%.
-- **`calcular_resultado_da_rodada`**: aplica as fórmulas da seção 4 e devolve um `ResultadoDaRodada`.
-- **`calcular_nova_fidelidade`**: média ponderada entre a fidelidade anterior e a participação conquistada na rodada.
-- **`anunciar_preco_da_empresa`**: devolve um estado igual ao atual, mas com o preço da empresa registrado (passa a vez ao concorrente).
-- **`precos_que_o_concorrente_consegue_bancar`**: filtra os preços em que o caixa do concorrente continua maior ou
-  igual a zero depois da rodada. É o que impede o dumping infinito.
-- **`aplicar_resposta_do_concorrente`**: fecha a rodada: calcula o resultado, soma os lucros, atualiza fidelidade e
-  caixa e avança para a próxima rodada (de novo com a vez da empresa).
+| Azul (MAX) | Respostas do Laranja (MIN) | Valor do nó MIN |
+|---|---|---|
+| → direita | ↑ cima: 0 − 29 = −29; ← esquerda: 0 − 29 = −29 | **−29** |
+| ↓ baixo | ↑ cima: 11 − 17 = −6; ← esquerda: 10 − 18 = −8 | **−8** |
 
-### 5.2 `busca_minimax.py`: o algoritmo
+O Laranja (MIN) escolheria a resposta de menor valor em cada ramo. O Azul (MAX) compara −29 e −8 e escolhe o maior:
+**↓ baixo**. Mesmo sem ver a batida, a heurística já percebe que o beco tem território zero.
 
-- **`EstatisticasDaBusca`**: contador de nós visitados e de podas, usado para comparar as duas versões do algoritmo.
-- **`AvaliacaoDeJogada`**: associa um preço ao lucro mínimo garantido se esse preço for escolhido.
-- **`gerar_jogadas_possiveis`**: se é a vez da empresa, todos os preços; se é a vez do concorrente, só os que ele consegue bancar.
-- **`aplicar_jogada`**: gera o estado filho. Se quem joga é a empresa, anuncia o preço; se é o concorrente, fecha a rodada.
-- **`avaliar_estado_final`**: a função de utilidade: o lucro acumulado da empresa no fim do jogo.
-- **`minimax`**: o algoritmo clássico, recursivo:
-  1. conta o nó visitado;
-  2. se o jogo terminou, devolve o lucro acumulado da empresa (folha da árvore);
-  3. se é a vez da empresa (MAX), testa todos os preços, calcula recursivamente o valor de cada um e devolve o **maior**;
-  4. se é a vez do concorrente (MIN), testa todos os preços que ele consegue bancar e devolve o **menor**.
+**Com profundidade 2**, a busca enxerga a batida: o ramo "direita" passa a valer **−1000** (derrota) e o ramo
+"baixo" vale −6. A decisão é a mesma, agora com a certeza de que o beco é fatal.
 
-  O valor devolvido na raiz é o lucro mínimo garantido: o melhor resultado que a empresa consegue assegurar contra a
-  pior sequência de respostas do concorrente.
-- **`minimax_com_poda_alfa_beta`**: o mesmo algoritmo com a otimização alfa-beta, que dá **exatamente o mesmo
-  resultado** visitando muito menos nós.
-  - **alfa** é o maior lucro que a empresa já tem garantido em algum caminho explorado até agora;
-  - **beta** é o menor lucro a que o concorrente já consegue limitar a empresa em algum caminho explorado até agora;
-  - quando `alfa >= beta`, os irmãos restantes daquele nó não podem mudar a decisão final: um dos jogadores já tem
-    uma alternativa melhor em outro ponto da árvore e nunca deixaria o jogo chegar ali. Esses ramos são **podados**
-    (o `break` no laço) e a poda é contada.
-- **`calcular_valor_do_estado`**: função auxiliar que roda uma das duas versões (com ou sem poda) a partir de um estado e devolve o valor e as estatísticas.
-- **`avaliar_jogadas_possiveis`**: calcula o valor Minimax de **cada** jogada possível num estado. Cada filho é
-  avaliado com a janela alfa-beta completa para que o valor de todos seja exato (e não só um limite), o que permite
-  mostrar a tabela da seção 1 da saída.
-- **`escolher_preco_da_empresa`**: pega a jogada de **maior** valor (decisão do jogador MAX).
-- **`escolher_resposta_mais_agressiva_do_concorrente`**: pega a jogada de **menor** valor (decisão do jogador MIN).
+### 2.7 Poda alfa-beta
 
-### 5.3 `perfis_concorrente.py`: tipos de concorrente para a simulação
+A poda alfa-beta é uma otimização do Minimax que chega **exatamente ao mesmo resultado** sem avaliar ramos que não
+podem mudar a decisão. A busca carrega dois limites:
 
-O Minimax sempre **planeja** supondo o pior concorrente. Para demonstrar a garantia, a simulação coloca a empresa
-contra concorrentes com comportamentos diferentes. Todos recebem a configuração, o estado (com o preço da empresa já
-anunciado) e um gerador aleatório, e devolvem um preço que o concorrente consegue bancar.
+- **α (alfa)**: o melhor valor que o MAX já tem garantido em algum caminho explorado;
+- **β (beta)**: o melhor valor (o menor) que o MIN já tem garantido em algum caminho explorado.
 
-- **`concorrente_agressivo_minimax`**: joga como o MIN da árvore, a resposta que mais derruba o lucro da empresa. É o pior caso.
-- **`concorrente_que_maximiza_o_proprio_lucro`**: escolhe o preço que dá mais lucro para ele próprio na rodada (comportamento racional "normal").
-- **`concorrente_que_imita_a_empresa`**: copia o preço da empresa (ou o mais próximo que conseguir bancar).
-- **`concorrente_que_sempre_pratica_o_menor_preco`**: faz dumping sempre que o caixa permite, sem planejar.
-- **`concorrente_aleatorio`**: escolhe um preço ao acaso (com semente fixa, para o resultado ser reproduzível).
-- **`preco_bancavel_mais_proximo`**: auxiliar que acha, entre os preços permitidos, o mais próximo de um preço desejado.
-- **`PERFIS_DE_CONCORRENTE`**: dicionário com o nome de exibição de cada perfil e a função correspondente.
+Quando **α ≥ β**, um dos jogadores já tem uma alternativa melhor em outro ponto da árvore e nunca deixaria o jogo
+chegar ali, então os irmãos restantes são descartados (**podados**).
 
-### 5.4 `simulacao.py`: jogando a guerra de preços
+Números medidos na posição inicial de um labirinto 17 × 17:
 
-- **`RegistroDaRodada`**: o que aconteceu numa rodada (preços, resultado, lucro garantido naquele momento, fidelidade e caixa depois).
-- **`ResultadoDaSimulacao`**: todas as rodadas de uma simulação, a garantia calculada no início e os lucros totais.
-- **`simular_guerra_de_precos`**: joga o jogo do início ao fim. A cada rodada:
-  1. a empresa roda o Minimax **a partir do estado atual** e escolhe o preço (a garantia da primeira rodada é guardada);
-  2. o perfil de concorrente escolhido responde;
-  3. o resultado da rodada é calculado e registrado, e o estado avança.
+| Profundidade | Nós (Minimax puro) | Nós (alfa-beta) | Redução | Tempo puro | Tempo alfa-beta |
+|---|---|---|---|---|---|
+| 1 rodada | 21 | 15 | 29% | 4 ms | 1 ms |
+| 2 rodadas | 213 | 96 | 55% | 16 ms | 4 ms |
+| 3 rodadas | 1.621 | 431 | 73% | 58 ms | 12 ms |
+| 4 rodadas | 10.014 | 1.609 | 84% | 315 ms | 40 ms |
+| 5 rodadas | 51.588 | 4.740 | 91% | 1.523 ms | 110 ms |
 
-  Recalcular o Minimax a cada rodada permite à empresa aproveitar os erros do concorrente: se ele não jogar o pior
-  caso, o novo estado é melhor do que o previsto e a garantia daquele ponto em diante só aumenta.
+Com a poda, alguns valores da árvore deixam de ser exatos e passam a ser **limites**: `≤ 12` quer dizer "no máximo
+12, e isso já basta para descartar este ramo"; `≥ 12` quer dizer "pelo menos 12". O modal da árvore mostra esses
+símbolos e os ramos podados tracejados. Os valores do caminho escolhido são sempre exatos.
 
-### 5.5 `main.py`: interface de linha de comando e relatórios
+### 2.8 Como o Minimax entra em cada rodada da partida
 
-- **`ler_argumentos`**: define as opções `--rodadas`, `--caixa-concorrente`, `--semente` e `--detalhar` com `argparse`.
-- **`formatar_em_reais`** e **`formatar_percentual`**: formatam números no padrão brasileiro (`R$ 1.480,00`, `50,0%`).
-- **`imprimir_titulo`**, **`imprimir_tabela`** e **`alinhar_celula`**: desenham títulos e tabelas em texto, calculando a largura de cada coluna.
-- **`mostrar_configuracao`**: imprime os parâmetros do mercado.
-- **`mostrar_lucro_garantido_por_preco_inicial`**: seção 1, valor Minimax de cada preço inicial e a melhor escolha.
-- **`mostrar_cenario_pessimista`** e **`mostrar_rodadas_da_simulacao`**: seção 2, a guerra rodada a rodada contra o concorrente agressivo.
-- **`mostrar_comparacao_entre_perfis`**: seção 3, lucro da empresa contra cada perfil e se a garantia foi cumprida.
-- **`mostrar_detalhes_de_todos_os_perfis`**: com `--detalhar`, imprime a tabela rodada a rodada de cada perfil.
-- **`medir_busca`** e **`mostrar_comparacao_de_eficiencia`**: seção 4, mede nós, podas e tempo das duas versões do
-  algoritmo. Com mais de 4 rodadas o Minimax puro é pulado, porque a árvore passaria de 10 milhões de nós.
-- **`main`**: configura a saída em UTF-8 (para os acentos aparecerem certos), monta a configuração, roda as
-  simulações para todos os perfis e chama as funções de relatório na ordem.
+A cada rodada:
 
-### 5.6 `test_minimax.py`: testes automatizados
+1. O Azul roda o Minimax **a partir da situação atual** e pega a direção de maior valor.
+2. O Laranja escolhe a jogada dele com a estratégia configurada. Se for Minimax, ele roda a **mesma função** com os
+   papéis trocados: para ele, o Laranja é o MAX e o Azul é o MIN.
+3. As duas jogadas são aplicadas juntas e a partida avança.
 
-Usa o `unittest` da biblioteca padrão. São 11 testes em três grupos:
+A árvore não é guardada durante a partida (seria muita memória). Quando o usuário abre o modal, o programa refaz a
+busca para aquela rodada com a opção `registrarArvore` ligada. Como a busca é determinística, a árvore mostrada é
+idêntica à que gerou a decisão.
 
-- **Modelo de mercado**: preço menor aumenta a participação; a participação fica sempre entre 0 e 1; sem caixa o
-  concorrente não consegue vender abaixo do custo; configuração sem preço viável é rejeitada.
-- **Minimax**: com 1 rodada o Minimax dá o mesmo valor de uma busca por força bruta (máximo dos mínimos); a poda
-  alfa-beta dá o mesmo valor que o Minimax puro em 12 configurações diferentes; a poda visita menos nós; o preço
-  escolhido tem o maior lucro garantido.
-- **Simulação**: contra **todos** os perfis, em várias configurações e sementes, a empresa nunca lucra menos que a
-  garantia; contra o concorrente agressivo o lucro é **exatamente** a garantia; o caixa do concorrente nunca fica negativo.
+## 3. Geração aleatória do labirinto
 
-## 6. Interpretando os resultados (configuração padrão: 3 rodadas, caixa de R$ 2.000)
+A cada **Resetar** é sorteada uma semente nova, e o labirinto é gerado assim:
 
-**Seção 1: lucro garantido por preço inicial**
+1. As posições iniciais ficam em lados opostos (o Azul à esquerda e o Laranja no ponto espelhado à direita).
+2. Segmentos de parede de 2 a 5 células, horizontais ou verticais, são sorteados até ocupar cerca de 20% do grid.
+3. Cada parede é copiada na **posição espelhada (rotação de 180°)**. O labirinto fica diferente a cada vez, mas
+   **justo**: os dois jogadores têm exatamente a mesma situação.
+4. Uma área de raio 2 ao redor de cada posição inicial é mantida livre.
+5. Uma BFS verifica se os dois jogadores estão conectados. Se não estiverem, sorteia de novo. Bolsões isolados são
+   fechados com parede, para não existirem áreas inalcançáveis.
 
-| Preço inicial | Lucro mínimo garantido |
-|---|---|
-| R$ 8 | R$ 282 |
-| **R$ 12** | **R$ 1.480** (melhor) |
-| R$ 16 | R$ 1.106 |
-| R$ 20 | R$ 570 |
-| R$ 24 | R$ 180 |
+O número do labirinto (a semente) aparece no canto da tela, e **Reiniciar** joga de novo no mesmo labirinto, o que
+permite comparar configurações diferentes na mesma situação.
 
-Preços altos dão margem boa, mas deixam a empresa vulnerável: o concorrente faz dumping, rouba os clientes e ainda
-derruba a fidelidade para as rodadas seguintes. Preço baixo demais (R$ 8, abaixo do custo) dá prejuízo por unidade.
-O melhor compromisso entre margem e proteção contra o pior caso é R$ 12.
+## 4. O que cada parte do código faz
 
-**Seção 2: cenário pessimista.** O concorrente agressivo **não** faz dumping logo de cara: na rodada 1 ele cobra
-R$ 12, lucra R$ 700 e aumenta o caixa para R$ 2.700. Com esse dinheiro ele consegue bancar **duas** rodadas seguidas a
-R$ 8 (abaixo do custo), derrubando a participação da empresa de 50% para 30% e depois 22%. Esse planejamento surgiu
-sozinho da busca Minimax, sem nenhuma regra escrita para isso.
+O código foi dividido em duas camadas. A pasta `js/logica` tem as regras e o algoritmo e não depende do navegador
+(por isso pode ser testada com Node). A pasta `js/interface` cuida do que aparece na tela. Não há comentários no
+código: os nomes das funções e variáveis foram escritos por extenso para explicar o que fazem.
 
-**Seção 3: comparação entre perfis.** A empresa sempre termina com pelo menos R$ 1.480. Contra o concorrente que só
-maximiza o próprio lucro ela chega a R$ 5.086. O concorrente de dumping imediato é um bom contraste: ele queima caixa
-na rodada 1, fica sem dinheiro para repetir na rodada 2 (a empresa percebe isso pelo estado e sobe o preço para R$ 16)
-e a empresa fecha com R$ 1.518, mais do que contra o agressivo que planeja.
+### 4.1 `js/logica/aleatorio.js`
 
-**Seção 4: eficiência.** Com 3 rodadas o Minimax puro visita 18.780 nós e a poda alfa-beta, 1.909 (cerca de 90% a
-menos), com o mesmo resultado. Com 4 rodadas a diferença cresce: 465.828 nós contra 13.317 (cerca de 97% a menos). O
-tamanho da árvore cresce exponencialmente com a profundidade (até 25 combinações de preço por rodada), por isso a poda
-se torna cada vez mais importante.
+- **`criarGeradorAleatorio(semente)`**: gerador de números pseudoaleatórios com semente (algoritmo *mulberry32*). A
+  mesma semente sempre gera a mesma sequência, o que torna labirintos e partidas reproduzíveis.
+- **`sortearInteiro`** e **`sortearElemento`**: sorteiam um número num intervalo ou um item de uma lista.
+- **`gerarSementeAleatoria`**: cria uma semente nova para cada labirinto.
 
-**Efeito do caixa do concorrente.** Rodando com `--caixa-concorrente 0`, o concorrente não consegue fazer dumping, o
-melhor preço inicial passa a ser R$ 16 e a garantia sobe para R$ 2.238. Ou seja, o "cofre de guerra" do concorrente
-custa R$ 758 de lucro garantido para a empresa.
+### 4.2 `js/logica/tabuleiro.js`
 
-## 7. Por que a garantia sempre é cumprida
+- Constantes das células: **livre**, **parede**, **rastro azul** e **rastro laranja**. O tabuleiro é um vetor
+  (`Uint8Array`) de tamanho × tamanho, compacto e rápido de copiar.
+- **`DIRECOES`**: as quatro direções com nome, seta e deslocamento em linha e coluna.
+- **`indiceDaCelula`**, **`linhaDoIndice`**, **`colunaDoIndice`**: convertem entre (linha, coluna) e a posição no vetor.
+- **`vizinhoNaDirecao`**: devolve a célula vizinha numa direção, ou `FORA_DO_TABULEIRO`.
+- **`vizinhosDentroDoTabuleiro`**: os vizinhos válidos de uma célula (usado nas BFS).
+- **`indiceEspelhado`**: a posição rotacionada em 180°, usada para gerar o labirinto simétrico.
 
-O valor Minimax de um estado é o melhor lucro que a empresa consegue assegurar dali em diante contra qualquer
-sequência de respostas. Quando o concorrente escolhe uma resposta diferente da pior, ele leva o jogo para um estado
-cujo valor é **maior ou igual** ao previsto (se fosse menor, essa resposta é que teria sido escolhida como a pior).
-Como a empresa recalcula o Minimax a cada rodada, ela continua garantindo pelo menos o valor do novo estado. Por
-indução, rodada após rodada, o lucro final nunca fica abaixo da garantia inicial.
+### 4.3 `js/logica/labirinto.js`
 
-## 8. Limitações e possíveis extensões
+- **`calcularPosicoesIniciais`**: Azul na linha do meio, perto da borda esquerda; Laranja no ponto espelhado.
+- **`sortearParedesSimetricas`**: sorteia os segmentos de parede e os espelha, sem encostar nas posições iniciais.
+- **`encontrarCelulasAlcancaveis`**: BFS que marca todas as células livres alcançáveis a partir de uma origem.
+- **`fecharBolsoesIsolados`**: confere se os dois jogadores estão conectados e transforma em parede as áreas isoladas.
+- **`gerarLabirinto(tamanho, semente)`**: junta tudo e tenta até 50 sorteios até conseguir um labirinto válido.
 
-- Os preços são discretos (5 opções). Mais opções deixam o modelo mais fino, mas a árvore cresce rapidamente.
-- A árvore é explorada até o fim do jogo. Para horizontes longos seria preciso limitar a profundidade e usar uma
-  **função de avaliação heurística** nos nós de corte (por exemplo, lucro acumulado mais uma estimativa do lucro futuro
-  com base na fidelidade atual).
-- A hipótese de adversário puro é conservadora. Um modelo de jogo de soma não zero (equilíbrio de Nash) descreveria
-  melhor um concorrente que só quer o próprio lucro, mas deixaria de oferecer a garantia de pior caso.
-- A ordem das jogadas influencia a eficiência da poda: testar primeiro as jogadas mais promissoras (por exemplo, os
-  preços mais baixos para o concorrente, como já acontece aqui) aumenta o número de podas.
+### 4.4 `js/logica/jogo.js`
+
+- **`criarEstadoInicial`**: monta o estado da partida (células, posições, trilhas, quem está vivo, rodada).
+- **`movimentosSeguros`**: direções que levam a uma célula livre.
+- **`movimentosPossiveis`**: os movimentos seguros ou, se não houver nenhum, a direção atual (o agente bate).
+- **`aplicarRodada`**: aplica os dois movimentos **ao mesmo tempo**, detecta batidas e colisão frontal e devolve um
+  **estado novo**, sem alterar o anterior. Essa imutabilidade é o que permite ao Minimax explorar vários futuros a
+  partir do mesmo estado sem precisar "desfazer" jogadas.
+- **`aplicarRodadaPorPapel`**: mesma coisa, mas recebendo as jogadas como "do maximizador" e "do minimizador". É o
+  que permite usar a mesma busca para o Azul e para o Laranja.
+- **`listarTrilha`**: devolve o caminho percorrido por um jogador em ordem. As trilhas são guardadas como lista
+  encadeada (cada passo aponta para o anterior), então acrescentar um passo não copia nada e não pesa na busca.
+- **`jogoTerminou`**, **`vencedorDoJogo`**, **`descreverCausaDaColisao`**: informam se acabou, quem venceu e por que
+  cada um bateu (parede, próprio rastro, rastro do oponente, fora do tabuleiro ou colisão frontal).
+
+### 4.5 `js/logica/avaliacao.js`
+
+- **`calcularDistanciasAPartirDe`**: BFS que calcula a distância de uma cabeça até cada célula livre.
+- **`calcularTerritorios`**: roda a BFS para os dois jogadores e decide o dono de cada célula (quem chega primeiro).
+  Devolve a contagem de cada um e o mapa de donos, que também é usado para pintar o território na tela.
+- **`avaliarPosicao(estado, jogadorMaximizador)`**: a **função de avaliação** do Minimax: território do MAX menos
+  território do MIN.
+- **`contarEspacoAlcancavel`**: quantas células um jogador alcança (usado pela estratégia gulosa).
+
+### 4.6 `js/logica/minimax.js`: o algoritmo
+
+- **`buscarMelhorMovimento(estado, jogadorMaximizador, opções)`**: ponto de entrada. Recebe a profundidade em
+  rodadas, se deve usar poda alfa-beta e se deve registrar a árvore. Devolve a melhor jogada, o valor, os nós
+  visitados, os ramos podados, o tempo e, se pedido, a árvore completa.
+- **`valorNoMaximizador`**: o nó MAX (equivale ao `MAX-VALUE` do livro de Russell e Norvig):
+  1. se o jogo acabou, devolve o valor de vitória, derrota ou empate (`avaliarFimDeJogo`);
+  2. se chegou ao limite de profundidade, devolve a avaliação de território (`avaliarPosicao`);
+  3. senão, testa cada movimento do MAX chamando `valorNoMinimizador` e fica com o **maior** valor;
+  4. com poda ligada, atualiza **α** e interrompe o laço quando **α ≥ β**.
+- **`valorNoMinimizador`**: o nó MIN (`MIN-VALUE`). Para cada resposta do MIN, aplica a rodada completa e chama
+  `valorNoMaximizador` com uma rodada a menos. Fica com o **menor** valor e, com poda, atualiza **β** e corta quando
+  **α ≥ β**.
+- **`avaliarFimDeJogo`**: os valores de vitória (1000 + rodadas restantes), derrota e empate (−500).
+- **Registro da árvore** (`criarNoDaArvore`, `criarNoFilho`, `registrarRamosPodados`, `concluirNoInterno`,
+  `classificarValor`): quando `registrarArvore` está ligado, cada nó guarda tipo (MAX/MIN), jogada, caminho desde a
+  raiz, janela alfa-beta na entrada, valor, se o valor é exato ou um limite (≤ / ≥), qual filho foi o melhor, se
+  foi podado e, nas folhas, a avaliação de território. Sem essa opção, nada é registrado e a busca fica mais leve.
+- **`obterCaminhoPrincipal`**: segue o melhor filho de cada nó a partir da raiz. É a sequência de jogadas que o
+  Minimax espera que aconteça (em dourado no modal).
+- **`valorIndicaVitoria`**, **`valorIndicaDerrota`**, **`valorIndicaEmpate`**: identificam valores de fim de jogo para exibição.
+
+### 4.7 `js/logica/estrategias.js`
+
+- **Minimax** (`decidirComMinimax`): chama `buscarMelhorMovimento` com a profundidade configurada.
+- **Guloso** (`decidirComEstrategiaGulosa`): escolhe a direção que deixa mais células alcançáveis logo em seguida,
+  sem pensar no oponente. Serve de comparação.
+- **Aleatório** (`decidirAleatoriamente`): sorteia entre as direções seguras.
+- **`decidirMovimento`**: chama a estratégia configurada para o agente.
+
+### 4.8 `js/logica/partida.js`
+
+- **`iniciarPartida`** e **`reiniciarPartidaNoMesmoLabirinto`**: criam a partida (labirinto, estado inicial, histórico vazio).
+- **`jogarProximaRodada`**: pede a decisão dos dois agentes **sobre o mesmo estado**, aplica a rodada e guarda um
+  registro com o estado antes e depois, as decisões e a configuração usada.
+- **`reconstruirArvoreDeDecisao`**: refaz a busca de uma rodada com o registro da árvore ligado, para o modal.
+
+### 4.9 `js/interface/aplicacao.js`
+
+É o controlador da página:
+
+- lê a configuração da tela (`lerConfiguracaoDosAgentes`);
+- **Resolver/Pausar** (`resolver`, `pausar`, `agendarProximoPasso`): executa uma rodada e agenda a próxima com
+  `setTimeout`. O intervalo é `1000 / passos por segundo`, então mexer na velocidade vale já para o passo seguinte;
+- **Próximo passo** (`executarUmPasso`), **Reiniciar** e **Resetar** (`comecarComNovoLabirinto`);
+- atualiza tabuleiro, placar de território, resultado final, tabela da última decisão e a lista de acompanhamento
+  (`atualizarTela`, `criarItemDoHistorico`);
+- abre o modal da árvore para a última rodada, para a próxima jogada ou para qualquer rodada do acompanhamento;
+- atalhos de teclado: `Espaço`, `→` e `A`.
+
+### 4.10 `js/interface/desenho-do-tabuleiro.js`
+
+Desenha o estado no `<canvas>`: fundo e grade, território (se ligado), paredes, células ocupadas, as **trilhas de
+luz** (linha contínua com brilho), as cabeças, o movimento pendente (tracejado, usado na prévia dos nós MIN) e um X
+vermelho onde houve batida. As cores vêm das variáveis do CSS e o desenho se ajusta à densidade de pixels da tela.
+
+### 4.11 `js/interface/arvore-de-decisao.js`
+
+O modal da árvore de decisão:
+
+- **`calcularLayout`**: posiciona só os nós visíveis. Cada folha visível ganha uma coluna e cada pai fica centralizado
+  sobre os filhos.
+- **`criarElementoDoNo`** e **`criarAresta`**: desenham em SVG os nós (retângulo para MAX, pílula para MIN, com
+  jogada, valor e tipo) e as ligações. O caminho escolhido fica em dourado e os ramos podados ficam tracejados.
+- **Interação**: clicar num nó mostra ou esconde os filhos e mantém o nó parado na tela; há botões para expandir o
+  caminho escolhido, expandir um nível, recolher tudo e dar zoom. Existe um limite de 800 nós visíveis para a página
+  não travar.
+- **`reconstruirEstadoDoNo`**: reaplica as jogadas do caminho desde a raiz para mostrar o tabuleiro daquele nó.
+- **`montarDescricaoDoNo`**: explica o nó selecionado (quem joga, valor, por que aquele filho foi escolhido, conta
+  da heurística nas folhas, significado de ≤/≥, janela α/β e o motivo das podas).
+
+### 4.12 `js/interface/formatacao.js`, `index.html`, `estilos.css` e `servidor.js`
+
+- **`formatacao.js`**: números no padrão brasileiro, valores do Minimax ("vitória", "empate", "derrota", "+12"),
+  setas das jogadas e descrição da profundidade.
+- **`index.html`**: estrutura da página, controles, painel lateral e o `<dialog>` da árvore.
+- **`estilos.css`**: tema escuro no estilo Tron, layout responsivo (funciona também no celular) e estilos dos nós da árvore.
+- **`servidor.js`**: servidor HTTP mínimo em Node, sem dependências, que serve os arquivos da pasta e bloqueia o
+  acesso a arquivos fora dela.
+
+### 4.13 `testes/`
+
+24 testes com `node --test`:
+
+- **Labirinto**: mesma semente gera o mesmo labirinto; sementes diferentes geram labirintos diferentes; o labirinto é
+  simétrico; todas as células livres são alcançáveis.
+- **Regras**: movimentos seguros, colisão frontal, causa de cada batida, imutabilidade do estado, ordem das trilhas.
+- **Avaliação**: dono de cada célula e troca de sinal conforme o ponto de vista.
+- **Minimax**: evita o beco sem saída; enxerga a derrota com 2 rodadas; só reconhece a vitória quando ela está
+  dentro da profundidade; empate inevitável vale −500; **a poda alfa-beta dá o mesmo valor e a mesma jogada que o
+  Minimax puro** em dezenas de posições; a árvore registrada bate com as estatísticas da busca.
+- **Partidas**: sempre terminam com um resultado válido, e o Minimax mais profundo vence o mais raso na maioria dos labirintos.
+
+## 5. Resultados
+
+Partidas automáticas em 30 labirintos 17 × 17 diferentes:
+
+| Azul | Laranja | Vitórias do Azul | Vitórias do Laranja | Empates |
+|---|---|---|---|---|
+| Minimax, 4 rodadas | Minimax, 1 rodada | 25 | 5 | 0 |
+| Minimax, 4 rodadas | Minimax, 2 rodadas | 18 | 12 | 0 |
+| Minimax, 4 rodadas | Guloso | 26 | 4 | 0 |
+| Minimax, 3 rodadas | Minimax, 3 rodadas | 14 | 13 | 3 |
+| Minimax, 1 rodada | Minimax, 4 rodadas | 8 | 22 | 0 |
+
+- Enxergar mais longe faz diferença: profundidade 4 contra 1 vence 83% das partidas.
+- Com as profundidades trocadas, o resultado também se inverte, então o que decide é o algoritmo, não o lado do tabuleiro.
+- Com profundidades iguais o jogo fica equilibrado, como esperado num labirinto simétrico.
+- No computador usado nos testes, cada rodada com profundidade 4 e poda levou no máximo cerca de 100 ms, então a
+  animação roda sem travar.
+
+## 6. Decisões de projeto e limitações
+
+- **Heurística**: a contagem de território não considera que algumas áreas não podem ser percorridas por inteiro
+  (becos com entrada e saída pela mesma célula). Uma melhoria seria estimar o maior caminho possível em cada região.
+- **Horizonte limitado**: com profundidade pequena, o agente pode não perceber uma armadilha que só se fecha além do
+  que ele enxerga (o "efeito horizonte"). Aumentar a profundidade reduz esse problema, mas o custo cresce exponencialmente.
+- **Ordem das jogadas**: as direções são testadas sempre na mesma ordem (cima, direita, baixo, esquerda). Testar
+  primeiro as jogadas mais promissoras aumentaria o número de podas.
+- **Adversário pessimista**: supor que o oponente vê a jogada antes de responder deixa o agente mais cauteloso do
+  que o necessário contra adversários fracos, mas é o que garante a segurança da decisão.
+
+## 7. Roteiro sugerido para a apresentação
+
+1. Mostre o labirinto e clique em **Resetar** algumas vezes para mostrar que ele muda (e que é simétrico).
+2. Ligue **Mostrar território** e explique que a cor de cada célula é a função de avaliação.
+3. Clique em **Próximo passo** algumas vezes e abra **Ver árvore de decisão**: raiz MAX, filhos MIN, caminho
+   dourado, folhas com a conta de território e ramos podados.
+4. Clique num nó MIN e depois numa folha para mostrar o tabuleiro de cada momento e a explicação do valor.
+5. Clique em **Resolver**, acelere e desacelere, e pause no momento em que um agente cerca o outro.
+6. Desligue a **poda alfa-beta**, jogue uma rodada e compare os nós visitados: mesma jogada, muito mais trabalho.
+7. Use **Reiniciar** com profundidades diferentes para mostrar que enxergar mais longe muda o resultado.

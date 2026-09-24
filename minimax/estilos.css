@@ -1,0 +1,895 @@
+:root {
+  --fundo: #060a14;
+  --superficie: #0d1426;
+  --superficie-elevada: #131d35;
+  --borda: #22304f;
+  --borda-forte: #33466f;
+  --texto: #e2e8f0;
+  --texto-suave: #94a3b8;
+  --texto-apagado: #64748b;
+  --azul: #38bdf8;
+  --laranja: #fb923c;
+  --destaque: #facc15;
+  --vitoria: #4ade80;
+  --derrota: #f87171;
+  --tabuleiro-fundo: #0a1122;
+  --tabuleiro-grade: #1a2540;
+  --tabuleiro-parede: #334766;
+  --tabuleiro-parede-brilho: #5b7299;
+  --raio: 12px;
+  --fonte: 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --fonte-mono: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 15% 0%, rgba(56, 189, 248, 0.08), transparent 45%),
+    radial-gradient(circle at 85% 100%, rgba(251, 146, 60, 0.07), transparent 45%),
+    var(--fundo);
+  color: var(--texto);
+  font-family: var(--fonte);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+h1,
+h2 {
+  margin: 0;
+  font-weight: 650;
+}
+
+h1 {
+  font-size: 1.7rem;
+  letter-spacing: 0.02em;
+}
+
+h2 {
+  font-size: 1rem;
+  margin-bottom: 12px;
+}
+
+code,
+kbd {
+  font-family: var(--fonte-mono);
+  font-size: 0.85em;
+  background: var(--superficie-elevada);
+  border: 1px solid var(--borda);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+.texto-azul {
+  color: var(--azul);
+  font-weight: 600;
+}
+
+.texto-laranja {
+  color: var(--laranja);
+  font-weight: 600;
+}
+
+.aviso-arquivo-local {
+  margin: 16px;
+  padding: 14px 18px;
+  border: 1px solid var(--derrota);
+  border-radius: var(--raio);
+  background: rgba(248, 113, 113, 0.1);
+}
+
+.cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 22px 28px 8px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.subtitulo {
+  margin: 6px 0 0;
+  color: var(--texto-suave);
+  max-width: 760px;
+}
+
+.rotulo-semente {
+  margin: 0;
+  color: var(--texto-apagado);
+  font-family: var(--fonte-mono);
+  font-size: 0.85rem;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 24px;
+  padding: 12px 28px 28px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.area-do-jogo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.placar {
+  width: 100%;
+  max-width: min(76vh, 720px);
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+}
+
+.placar-jogador {
+  display: flex;
+  flex-direction: column;
+}
+
+.placar-laranja {
+  align-items: flex-end;
+}
+
+.placar-nome {
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.placar-azul .placar-nome {
+  color: var(--azul);
+}
+
+.placar-laranja .placar-nome {
+  color: var(--laranja);
+}
+
+.placar-territorio {
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.placar-centro {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+
+.placar-rodada {
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-suave);
+}
+
+.barra-territorio {
+  display: flex;
+  width: 180px;
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--superficie-elevada);
+}
+
+.barra-azul,
+.barra-laranja {
+  height: 100%;
+  transition: width 0.25s ease;
+}
+
+.barra-azul {
+  background: var(--azul);
+}
+
+.barra-laranja {
+  background: var(--laranja);
+  margin-left: auto;
+}
+
+.moldura-do-tabuleiro {
+  position: relative;
+  width: 100%;
+  max-width: min(76vh, 720px);
+}
+
+#tabuleiro {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 10px;
+  border: 1px solid var(--borda-forte);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.08),
+    0 18px 50px rgba(0, 0, 0, 0.45);
+}
+
+.resultado-da-partida {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 60%;
+  padding: 18px 24px;
+  text-align: center;
+  background: rgba(6, 10, 20, 0.88);
+  border: 1px solid var(--borda-forte);
+  border-radius: var(--raio);
+  backdrop-filter: blur(4px);
+}
+
+.titulo-do-resultado {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.detalhe-do-resultado {
+  margin: 6px 0 0;
+  color: var(--texto-suave);
+}
+
+.resultado-vitoria-azul .titulo-do-resultado {
+  color: var(--azul);
+}
+
+.resultado-vitoria-laranja .titulo-do-resultado {
+  color: var(--laranja);
+}
+
+.barra-de-controles {
+  width: 100%;
+  max-width: min(76vh, 720px);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.grupo-de-botoes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.botao {
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--texto);
+  background: var(--superficie-elevada);
+  border: 1px solid var(--borda-forte);
+  border-radius: 9px;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.botao:hover:not(:disabled) {
+  border-color: var(--azul);
+}
+
+.botao:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
+}
+
+.botao:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.botao-principal {
+  background: var(--azul);
+  border-color: var(--azul);
+  color: #04121d;
+  font-weight: 650;
+}
+
+.botao-principal:hover:not(:disabled) {
+  background: #7dd3fc;
+}
+
+.botao-principal.em-reproducao {
+  background: var(--destaque);
+  border-color: var(--destaque);
+}
+
+.botao-pequeno {
+  padding: 5px 10px;
+  font-size: 0.82rem;
+}
+
+.botao-icone {
+  min-width: 34px;
+  padding-inline: 8px;
+  font-weight: 700;
+}
+
+.controle-de-velocidade {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controle-de-velocidade input {
+  width: 120px;
+  accent-color: var(--azul);
+}
+
+.rotulo-velocidade {
+  min-width: 82px;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto-suave);
+  font-size: 0.85rem;
+}
+
+.dica-de-atalhos {
+  margin: 0;
+  color: var(--texto-apagado);
+  font-size: 0.8rem;
+}
+
+.painel-lateral {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.cartao {
+  background: var(--superficie);
+  border: 1px solid var(--borda);
+  border-radius: var(--raio);
+  padding: 16px;
+}
+
+.titulo-com-acao {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.campo {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+  font-size: 0.88rem;
+  color: var(--texto-suave);
+}
+
+.campo select,
+.campo-inline select {
+  font: inherit;
+  color: var(--texto);
+  background: var(--superficie-elevada);
+  border: 1px solid var(--borda-forte);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
+.campo-com-valor {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.campo-com-valor input {
+  flex: 1;
+  accent-color: var(--azul);
+}
+
+.campo-com-valor input:disabled {
+  opacity: 0.4;
+}
+
+.valor-do-campo {
+  min-width: 150px;
+  color: var(--texto);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.campo-marcavel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.campo-marcavel input {
+  accent-color: var(--azul);
+  width: 16px;
+  height: 16px;
+}
+
+.campo-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--texto-suave);
+  font-size: 0.88rem;
+}
+
+.observacao {
+  margin: 10px 0 0;
+  color: var(--texto-apagado);
+  font-size: 0.8rem;
+}
+
+.tabela-decisao {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabela-decisao th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--texto-apagado);
+  padding: 4px 4px 6px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.tabela-decisao td {
+  padding: 7px 4px;
+  border-bottom: 1px solid var(--borda);
+  white-space: nowrap;
+}
+
+.valor-vitoria {
+  color: var(--vitoria);
+  font-weight: 600;
+}
+
+.valor-derrota {
+  color: var(--derrota);
+  font-weight: 600;
+}
+
+.valor-empate {
+  color: var(--destaque);
+  font-weight: 600;
+}
+
+.cartao-historico {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.lista-historico {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 290px;
+  overflow-y: auto;
+  font-size: 0.84rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.item-historico {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--borda);
+}
+
+.item-historico:first-child {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.numero-da-rodada {
+  color: var(--texto-apagado);
+  font-family: var(--fonte-mono);
+}
+
+.jogadas-da-rodada {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.jogada-azul {
+  color: var(--azul);
+}
+
+.jogada-laranja {
+  color: var(--laranja);
+}
+
+.marca-colisao {
+  color: var(--derrota);
+  font-weight: 700;
+}
+
+.modal-arvore {
+  width: min(1500px, 96vw);
+  height: min(920px, 94vh);
+  padding: 0;
+  color: var(--texto);
+  background: var(--superficie);
+  border: 1px solid var(--borda-forte);
+  border-radius: 16px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+}
+
+.modal-arvore[open] {
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-arvore::backdrop {
+  background: rgba(2, 5, 12, 0.75);
+  backdrop-filter: blur(2px);
+}
+
+.modal-cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 18px 22px 8px;
+}
+
+.modal-cabecalho h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.modal-acoes {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.resumo-da-busca {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px 22px 10px;
+}
+
+.chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--superficie-elevada);
+  border: 1px solid var(--borda);
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-rotulo {
+  color: var(--texto-apagado);
+}
+
+.ferramentas-da-arvore {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 22px;
+  border-top: 1px solid var(--borda);
+  border-bottom: 1px solid var(--borda);
+}
+
+.aviso-da-arvore {
+  color: var(--destaque);
+  font-size: 0.8rem;
+}
+
+.legenda-da-arvore {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--texto-suave);
+}
+
+.legenda-da-arvore li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.amostra {
+  display: inline-block;
+  width: 18px;
+  height: 12px;
+  border-radius: 4px;
+  border: 2px solid var(--texto-suave);
+  background: var(--superficie-elevada);
+}
+
+.amostra-max {
+  border-color: var(--azul);
+}
+
+.amostra-min {
+  border-color: var(--laranja);
+  border-radius: 999px;
+}
+
+.amostra-caminho {
+  border-color: var(--destaque);
+  box-shadow: 0 0 6px rgba(250, 204, 21, 0.6);
+}
+
+.amostra-podado {
+  border-style: dashed;
+  border-color: var(--texto-apagado);
+}
+
+.corpo-do-modal {
+  flex: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  min-height: 0;
+}
+
+.area-da-arvore {
+  overflow: auto;
+  min-height: 0;
+  background:
+    linear-gradient(var(--tabuleiro-grade) 1px, transparent 1px) 0 0 / 28px 28px,
+    linear-gradient(90deg, var(--tabuleiro-grade) 1px, transparent 1px) 0 0 / 28px 28px,
+    var(--tabuleiro-fundo);
+  background-blend-mode: normal;
+}
+
+#svg-da-arvore {
+  display: block;
+}
+
+.detalhes-do-no {
+  border-left: 1px solid var(--borda);
+  padding: 16px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.previa-do-no {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  border: 1px solid var(--borda-forte);
+}
+
+.texto-do-no {
+  margin-top: 14px;
+  font-size: 0.86rem;
+}
+
+.texto-do-no h3 {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+
+.texto-do-no p {
+  margin: 0 0 10px;
+  color: var(--texto-suave);
+}
+
+.texto-do-no strong {
+  color: var(--texto);
+}
+
+.caminho-do-no {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.caminho-do-no li {
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--superficie-elevada);
+  border: 1px solid var(--borda);
+  font-size: 0.78rem;
+}
+
+.valor-em-destaque {
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+}
+
+.no {
+  cursor: pointer;
+}
+
+.no rect {
+  fill: var(--superficie-elevada);
+  stroke-width: 2;
+  transition: filter 0.15s ease;
+}
+
+.no:hover rect,
+.no:focus-visible rect {
+  filter: brightness(1.35);
+}
+
+.no:focus {
+  outline: none;
+}
+
+.no.vez-azul rect {
+  stroke: var(--azul);
+}
+
+.no.vez-laranja rect {
+  stroke: var(--laranja);
+}
+
+.no.no-folha rect {
+  stroke: var(--texto-apagado);
+}
+
+.no.no-caminho-principal rect {
+  stroke: var(--destaque);
+  stroke-width: 3;
+  filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.55));
+}
+
+.no.no-selecionado rect {
+  fill: #1f2d4f;
+  stroke-width: 3.5;
+}
+
+.no.no-podado {
+  cursor: default;
+}
+
+.no.no-podado rect {
+  stroke: var(--texto-apagado);
+  stroke-dasharray: 5 4;
+  fill: transparent;
+}
+
+.rotulo-do-no {
+  font-size: 11px;
+  fill: var(--texto-suave);
+}
+
+.rotulo-do-no.jogada-azul {
+  fill: var(--azul);
+}
+
+.rotulo-do-no.jogada-laranja {
+  fill: var(--laranja);
+}
+
+.valor-do-no {
+  font-size: 15px;
+  font-weight: 700;
+  fill: var(--texto);
+  font-variant-numeric: tabular-nums;
+}
+
+.valor-do-no.valor-vitoria {
+  fill: var(--vitoria);
+}
+
+.valor-do-no.valor-derrota {
+  fill: var(--derrota);
+}
+
+.valor-do-no.valor-empate {
+  fill: var(--destaque);
+}
+
+.no-podado .valor-do-no {
+  fill: var(--texto-apagado);
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.tipo-do-no {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  fill: var(--texto-apagado);
+}
+
+.selo-filhos-ocultos circle {
+  fill: var(--borda-forte);
+}
+
+.selo-filhos-ocultos text {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--texto);
+}
+
+.aresta {
+  fill: none;
+  stroke: var(--borda-forte);
+  stroke-width: 1.5;
+}
+
+.aresta.aresta-caminho-principal {
+  stroke: var(--destaque);
+  stroke-width: 3;
+}
+
+.aresta.aresta-podada {
+  stroke-dasharray: 4 4;
+  stroke: var(--texto-apagado);
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: 1fr;
+    padding: 12px 16px 24px;
+  }
+
+  .cabecalho {
+    padding: 18px 16px 4px;
+  }
+
+  .corpo-do-modal {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .detalhes-do-no {
+    border-left: none;
+    border-top: 1px solid var(--borda);
+    max-height: 40vh;
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 14px;
+  }
+
+  .texto-do-no {
+    margin-top: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .detalhes-do-no {
+    grid-template-columns: 1fr;
+  }
+
+  .previa-do-no {
+    max-width: 220px;
+  }
+
+  .barra-territorio {
+    width: 110px;
+  }
+}

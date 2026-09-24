@@ -1,93 +1,114 @@
-# Minimax: guerra de preços em um duopólio
+# Minimax: Fuga no Labirinto (estilo Tron)
 
-Duas empresas dominam um mercado e disputam clientes pelo preço durante várias rodadas (trimestres).
-A **empresa** usa o algoritmo **Minimax** para escolher o preço que garante o **maior lucro mínimo possível**,
-qualquer que seja a estratégia agressiva do **concorrente** (inclusive vender abaixo do custo, o chamado *dumping*).
+Duas motos de luz andam num labirinto quadrado deixando um rastro sólido. Quem bater em uma parede, no próprio
+rastro ou no rastro do oponente perde. O agente **Azul** decide cada movimento com o algoritmo **Minimax**
+(com poda alfa-beta opcional), tentando **maximizar o próprio espaço e minimizar o espaço do oponente**.
 
-O programa também implementa a **poda alfa-beta** e compara o número de nós visitados com o Minimax puro.
+A interface web permite:
+
+- gerar um **labirinto aleatório** a cada reset;
+- **resolver** a partida automaticamente, **pausar** e avançar **passo a passo**;
+- **acelerar e desacelerar** a resolução (de 0,5 a 30 passos por segundo);
+- acompanhar cada rodada: jogadas, valor do Minimax, nós visitados, podas e tempo;
+- abrir um **modal com a árvore de decisão** de qualquer rodada, navegar pelos nós e ver o tabuleiro de cada um.
 
 ## Requisitos
 
-- Python **3.10 ou superior** (testado no Python 3.14)
-- Nenhuma biblioteca externa: só a biblioteca padrão do Python
-
-Para conferir a versão instalada:
-
-```bash
-python --version
-```
+- Um navegador moderno (Chrome, Edge ou Firefox)
+- **Node.js 18 ou superior** para o servidor local e os testes (testado no Node 24)
+  - Alternativa sem Node: Python 3 (só para servir os arquivos)
+- Nenhuma dependência para instalar: não precisa de `npm install`
 
 ## Como rodar
 
-Entre na pasta `minimax` e execute o `main.py`:
+1. Entre na pasta `minimax`:
+
+   ```bash
+   cd minimax
+   ```
+
+2. Inicie o servidor local:
+
+   ```bash
+   npm start
+   ```
+
+3. Abra no navegador o endereço que aparece no terminal: **http://localhost:8000**
+
+Para usar outra porta (por exemplo, se a 8000 estiver ocupada):
 
 ```bash
-cd minimax
+node servidor.js 8080
 ```
+
+Sem Node.js, dá para servir a pasta com o Python:
 
 ```bash
-python main.py
+python -m http.server 8000
 ```
 
-Também funciona a partir da raiz do repositório:
+> **Importante:** abrir o `index.html` com dois cliques não funciona, porque o navegador bloqueia módulos
+> JavaScript em arquivos locais (`file://`). A própria página mostra um aviso se isso acontecer.
 
-```bash
-python minimax/main.py
-```
+## Como usar
 
-> No Windows, se o comando `python` não for reconhecido, use `py` no lugar (ex.: `py main.py`).
+| Controle | O que faz |
+|---|---|
+| **▶ Resolver / ⏸ Pausar** | Joga a partida automaticamente até o fim; clicar de novo pausa. Atalho: `Espaço`. |
+| **⏭ Próximo passo** | Joga uma única rodada. Atalho: `→`. |
+| **↺ Reiniciar** | Recomeça a partida **no mesmo labirinto** (útil para comparar configurações). |
+| **⟳ Resetar (novo labirinto)** | Gera um **labirinto aleatório novo** e recomeça. |
+| **− / barra / +** | Desacelera ou acelera a resolução. |
+| **Ver árvore de decisão** | Abre o modal com a árvore do Minimax da última rodada (ou da próxima, se a partida ainda não começou). Atalho: `A`. |
+| **Árvore** (no acompanhamento) | Abre a árvore de decisão de uma rodada específica. |
 
-### Opções
+Configurações do painel lateral:
 
-| Opção | O que faz | Padrão |
-|---|---|---|
-| `--rodadas N` | Quantidade de rodadas da guerra de preços (1 a 5). Cada rodada adiciona 2 níveis à árvore do Minimax. | `3` |
-| `--caixa-concorrente VALOR` | Dinheiro que o concorrente pode queimar vendendo abaixo do custo. | `2000` |
-| `--semente N` | Semente do concorrente aleatório, para a simulação dar sempre o mesmo resultado. | `42` |
-| `--detalhar` | Mostra a tabela rodada a rodada para todos os perfis de concorrente. | desligado |
-| `--help` | Mostra a ajuda. | |
+- **Tamanho do labirinto**: 13 × 13, 17 × 17 ou 21 × 21 (gera um labirinto novo).
+- **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 5). Cada rodada são 2 níveis da árvore.
+- **Estratégia do Laranja**: Minimax (com profundidade própria), Guloso ou Aleatório.
+- **Usar poda alfa-beta**: liga ou desliga a otimização (o resultado é o mesmo; muda a quantidade de nós visitados).
+- **Mostrar território**: pinta cada célula livre com a cor de quem chega nela primeiro. É exatamente o que a função de avaliação do Minimax mede.
 
-Exemplos:
+No modal da árvore:
 
-```bash
-python main.py --rodadas 4
-```
-
-```bash
-python main.py --caixa-concorrente 0 --detalhar
-```
-
-Com 5 rodadas só a versão com poda alfa-beta é executada, porque a árvore do Minimax puro passaria de 10 milhões de nós.
-
-## O que aparece na saída
-
-1. **Lucro mínimo garantido para cada preço da primeira rodada**: o valor Minimax de cada opção de preço e a melhor escolha.
-2. **Cenário pessimista**: a guerra de preços rodada a rodada quando o concorrente joga da pior forma possível para a empresa.
-3. **Comparação entre perfis de concorrente**: a empresa usando Minimax contra concorrentes com comportamentos diferentes, mostrando que o lucro nunca fica abaixo da garantia.
-4. **Eficiência**: nós visitados, podas e tempo do Minimax puro contra o Minimax com poda alfa-beta.
+- **Clique em um nó** para abrir ou fechar os filhos e ver os detalhes no painel da direita (tabuleiro daquele momento, valor, janela alfa-beta e o motivo da escolha).
+- **Expandir caminho escolhido**, **Expandir mais um nível**, **Recolher tudo** e **zoom** (− / +).
+- Troque o **Agente** para ver a árvore do Laranja, quando ele também usa Minimax.
 
 ## Como rodar os testes
 
 Dentro da pasta `minimax`:
 
 ```bash
-python -m unittest -v
+npm test
 ```
 
-Ou a partir da raiz do repositório:
+São 24 testes (`node --test`) cobrindo a geração do labirinto, as regras do jogo, a função de avaliação, o Minimax, a poda alfa-beta e partidas completas.
 
-```bash
-python -m unittest discover -s minimax -v
+## Estrutura dos arquivos
+
 ```
-
-## Arquivos
-
-| Arquivo | Responsabilidade |
-|---|---|
-| `main.py` | Ponto de entrada: lê as opções da linha de comando e imprime os relatórios. |
-| `mercado.py` | Modelo econômico: configuração, estado do jogo, cálculo de demanda, participação, lucro e caixa. |
-| `busca_minimax.py` | O algoritmo Minimax, a versão com poda alfa-beta e as funções que escolhem a melhor jogada. |
-| `perfis_concorrente.py` | Comportamentos diferentes de concorrente usados na simulação. |
-| `simulacao.py` | Joga a guerra de preços rodada a rodada e registra o que aconteceu. |
-| `test_minimax.py` | Testes automatizados. |
-| `EXPLICACAO.md` | Explicação detalhada do problema, da modelagem e de cada parte do código. |
+minimax/
+├── index.html                    Estrutura da página e do modal da árvore
+├── estilos.css                   Visual (tema escuro estilo Tron)
+├── servidor.js                   Servidor local sem dependências (npm start)
+├── package.json                  Scripts start e test
+├── js/
+│   ├── logica/                   Regras e algoritmo (não dependem do navegador)
+│   │   ├── aleatorio.js          Gerador de números aleatórios com semente
+│   │   ├── tabuleiro.js          Células, direções e coordenadas do grid
+│   │   ├── labirinto.js          Geração aleatória e simétrica do labirinto
+│   │   ├── jogo.js               Estado da partida, movimentos e colisões
+│   │   ├── avaliacao.js          Função de avaliação (território por BFS)
+│   │   ├── minimax.js            Minimax com poda alfa-beta e registro da árvore
+│   │   ├── estrategias.js        Agentes: Minimax, Guloso e Aleatório
+│   │   └── partida.js            Controle da partida e histórico das rodadas
+│   └── interface/                Tudo o que mexe na tela
+│       ├── aplicacao.js          Botões, velocidade, placar e acompanhamento
+│       ├── desenho-do-tabuleiro.js  Desenho do labirinto no canvas
+│       ├── arvore-de-decisao.js  Modal com a árvore de decisão em SVG
+│       └── formatacao.js         Formatação de números, valores e movimentos
+├── testes/                       Testes automatizados (node --test)
+└── EXPLICACAO.md                 Explicação detalhada do Minimax e de cada parte do código
+```

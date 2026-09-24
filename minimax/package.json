@@ -1,0 +1,11 @@
+{
+  "name": "fuga-no-labirinto-minimax",
+  "version": "1.0.0",
+  "description": "Jogo no estilo Tron em que os agentes decidem seus movimentos com o algoritmo Minimax.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node servidor.js",
+    "test": "node --test"
+  }
+}
