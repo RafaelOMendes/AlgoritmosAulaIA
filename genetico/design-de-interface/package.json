@@ -1,0 +1,11 @@
+{
+  "name": "design-de-interface-genetico",
+  "version": "1.0.0",
+  "description": "Design automático de interface mobile com algoritmo genético e métricas de legibilidade.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node servidor.js",
+    "test": "node --test"
+  }
+}
