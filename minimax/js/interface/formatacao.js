@@ -1,7 +1,28 @@
-import { valorIndicaDerrota, valorIndicaEmpate, valorIndicaVitoria } from '../logica/minimax.js';
-import { DIRECAO_POR_NOME } from '../logica/tabuleiro.js';
+import { SETA_DE_CADA_DIRECAO } from './tabuleiro.js';
 
 const formatadorDeNumeros = new Intl.NumberFormat('pt-BR');
+const constantesDoJogo = { valorDeVitoria: 1000, valorDeEmpate: -500 };
+
+export function definirConstantesDoJogo({ valorDeVitoria, valorDeEmpate }) {
+  constantesDoJogo.valorDeVitoria = valorDeVitoria;
+  constantesDoJogo.valorDeEmpate = valorDeEmpate;
+}
+
+export function obterConstantesDoJogo() {
+  return { ...constantesDoJogo };
+}
+
+export function valorIndicaVitoria(valor) {
+  return valor >= constantesDoJogo.valorDeVitoria;
+}
+
+export function valorIndicaDerrota(valor) {
+  return valor <= -constantesDoJogo.valorDeVitoria;
+}
+
+export function valorIndicaEmpate(valor) {
+  return valor === constantesDoJogo.valorDeEmpate;
+}
 
 export function formatarNumero(numero) {
   return formatadorDeNumeros.format(numero);
@@ -49,14 +70,12 @@ export function classeDoValorMinimax(valor) {
   return '';
 }
 
-export function formatarLimiteAlfaBeta(valor) {
-  if (valor === Infinity) {
-    return '+∞';
-  }
-  if (valor === -Infinity) {
-    return '−∞';
-  }
-  return formatarComSinal(valor);
+export function formatarAlfa(valor) {
+  return valor === null || valor === undefined ? '−∞' : formatarComSinal(valor);
+}
+
+export function formatarBeta(valor) {
+  return valor === null || valor === undefined ? '+∞' : formatarComSinal(valor);
 }
 
 export function formatarMilissegundos(milissegundos) {
@@ -67,7 +86,7 @@ export function formatarMilissegundos(milissegundos) {
 }
 
 export function setaDoMovimento(nomeDoMovimento) {
-  return DIRECAO_POR_NOME[nomeDoMovimento].seta;
+  return SETA_DE_CADA_DIRECAO[nomeDoMovimento];
 }
 
 export function descreverMovimento(nomeDoMovimento) {

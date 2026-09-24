@@ -1,28 +1,22 @@
-import { gerarSementeAleatoria } from '../logica/aleatorio.js';
-import { calcularTerritorios } from '../logica/avaliacao.js';
-import { ESTRATEGIAS } from '../logica/estrategias.js';
-import { JOGADORES, NOME_DE_EXIBICAO, descreverCausaDaColisao, vencedorDoJogo } from '../logica/jogo.js';
-import {
-  iniciarPartida,
-  jogarProximaRodada,
-  partidaTerminou,
-  reiniciarPartidaNoMesmoLabirinto,
-} from '../logica/partida.js';
+import { chamarApi } from './api.js';
 import { criarVisualizadorDeArvore } from './arvore-de-decisao.js';
 import { desenharTabuleiro } from './desenho-do-tabuleiro.js';
 import {
   classeDoValorMinimax,
+  definirConstantesDoJogo,
   descreverProfundidade,
   formatarMilissegundos,
   formatarNumero,
   formatarValorMinimax,
   setaDoMovimento,
 } from './formatacao.js';
+import { JOGADORES, NOME_DE_EXIBICAO } from './tabuleiro.js';
 
 const PASSOS_POR_SEGUNDO = [0.5, 1, 2, 3, 5, 8, 12, 20, 30];
 
 const elementos = {
   tabuleiro: document.getElementById('tabuleiro'),
+  avisoDeErro: document.getElementById('aviso-de-erro'),
   rotuloSemente: document.getElementById('rotulo-semente'),
   placarRodada: document.getElementById('placar-rodada'),
   placarTerritorioAzul: document.getElementById('placar-territorio-azul'),
@@ -55,12 +49,23 @@ const elementos = {
 };
 
 const aplicacao = {
+  estrategias: {},
   partida: null,
   emReproducao: false,
-  temporizadorDoProximoPasso: null,
+  identificadorDaReproducao: 0,
+  aguardandoServidor: false,
 };
 
 const visualizadorDeArvore = criarVisualizadorDeArvore();
+
+function esperar(milissegundos) {
+  return new Promise((resolver) => setTimeout(resolver, milissegundos));
+}
+
+function mostrarErro(mensagem) {
+  elementos.avisoDeErro.textContent = mensagem;
+  elementos.avisoDeErro.hidden = !mensagem;
+}
 
 function passosPorSegundoAtuais() {
   return PASSOS_POR_SEGUNDO[Number(elementos.controleVelocidade.value)];
@@ -82,17 +87,24 @@ function lerConfiguracaoDosAgentes() {
   };
 }
 
+function partidaTerminou() {
+  return Boolean(aplicacao.partida?.vencedor);
+}
+
 function desenharEstadoAtual() {
+  if (!aplicacao.partida) {
+    return;
+  }
   desenharTabuleiro(elementos.tabuleiro, aplicacao.partida.estadoAtual, {
+    territorios: aplicacao.partida.territorios,
     mostrarTerritorio: elementos.mostrarTerritorio.checked,
   });
 }
 
 function atualizarPlacar() {
-  const estado = aplicacao.partida.estadoAtual;
-  const territorios = calcularTerritorios(estado);
+  const { estadoAtual, territorios } = aplicacao.partida;
   const totalDisputado = Math.max(1, territorios.azul + territorios.laranja);
-  elementos.placarRodada.textContent = estado.rodada;
+  elementos.placarRodada.textContent = estadoAtual.rodada;
   elementos.placarTerritorioAzul.textContent = formatarNumero(territorios.azul);
   elementos.placarTerritorioLaranja.textContent = formatarNumero(territorios.laranja);
   elementos.barraTerritorioAzul.style.width = `${(territorios.azul / totalDisputado) * 100}%`;
@@ -101,18 +113,16 @@ function atualizarPlacar() {
 
 function descreverFimDaPartida() {
   const ultimoRegistro = aplicacao.partida.historico.at(-1);
-  const vencedor = vencedorDoJogo(ultimoRegistro.estadoDepois);
-  const causas = JOGADORES.map((jogador) => ({
-    jogador,
-    causa: descreverCausaDaColisao(ultimoRegistro.estadoAntes, ultimoRegistro.estadoDepois, jogador),
-  })).filter(({ causa }) => causa !== null);
-  const descricaoDasCausas = causas.map(({ jogador, causa }) => `${NOME_DE_EXIBICAO[jogador]} ${causa}`).join(' e ');
+  const { vencedor } = aplicacao.partida;
+  const descricaoDasCausas = JOGADORES.filter((jogador) => ultimoRegistro.causasDasColisoes[jogador])
+    .map((jogador) => `${NOME_DE_EXIBICAO[jogador]} ${ultimoRegistro.causasDasColisoes[jogador]}`)
+    .join(' e ');
   const titulo = vencedor === 'empate' ? 'Empate!' : `${NOME_DE_EXIBICAO[vencedor]} venceu!`;
   return { vencedor, titulo, detalhe: `${descricaoDasCausas} na rodada ${ultimoRegistro.numeroDaRodada}.` };
 }
 
 function atualizarResultado() {
-  if (!partidaTerminou(aplicacao.partida)) {
+  if (!partidaTerminou()) {
     elementos.resultadoDaPartida.hidden = true;
     return;
   }
@@ -136,7 +146,7 @@ function criarLinhaDaDecisao(jogador, decisao) {
   ];
   linha.innerHTML = celulas.map((conteudo) => `<td>${conteudo}</td>`).join('');
   if (decisao && !usaMinimax) {
-    linha.title = `Estratégia: ${ESTRATEGIAS[decisao.estrategia].nome}`;
+    linha.title = `Estratégia: ${aplicacao.estrategias[decisao.estrategia]?.nome ?? decisao.estrategia}`;
   }
   return linha;
 }
@@ -149,11 +159,14 @@ function atualizarUltimaDecisao() {
 }
 
 function atualizarBotoes() {
-  const terminou = partidaTerminou(aplicacao.partida);
+  const semPartida = !aplicacao.partida;
+  const terminou = partidaTerminou();
   elementos.botaoResolver.textContent = aplicacao.emReproducao ? '⏸ Pausar' : '▶ Resolver';
   elementos.botaoResolver.classList.toggle('em-reproducao', aplicacao.emReproducao);
-  elementos.botaoResolver.disabled = terminou;
-  elementos.botaoPasso.disabled = terminou || aplicacao.emReproducao;
+  elementos.botaoResolver.disabled = semPartida || terminou;
+  elementos.botaoPasso.disabled = semPartida || terminou || aplicacao.emReproducao || aplicacao.aguardandoServidor;
+  elementos.botaoReiniciar.disabled = semPartida;
+  elementos.botaoVerArvore.disabled = semPartida;
   elementos.botaoMaisDevagar.disabled = Number(elementos.controleVelocidade.value) === 0;
   elementos.botaoMaisRapido.disabled = Number(elementos.controleVelocidade.value) === PASSOS_POR_SEGUNDO.length - 1;
 }
@@ -162,21 +175,24 @@ function atualizarRotulos() {
   const passos = passosPorSegundoAtuais();
   elementos.rotuloVelocidade.textContent = `${String(passos).replace('.', ',')} ${passos === 1 ? 'passo' : 'passos'}/s`;
   elementos.rotuloProfundidadeAzul.textContent = descreverProfundidade(Number(elementos.profundidadeAzul.value));
-  const laranjaUsaMinimax = elementos.estrategiaLaranja.value === 'minimax';
-  elementos.profundidadeLaranja.disabled = !laranjaUsaMinimax;
-  elementos.rotuloProfundidadeLaranja.textContent = laranjaUsaMinimax
+  const laranjaUsaProfundidade = aplicacao.estrategias[elementos.estrategiaLaranja.value]?.usaProfundidade ?? true;
+  elementos.profundidadeLaranja.disabled = !laranjaUsaProfundidade;
+  elementos.rotuloProfundidadeLaranja.textContent = laranjaUsaProfundidade
     ? descreverProfundidade(Number(elementos.profundidadeLaranja.value))
     : 'não se aplica';
-  elementos.rotuloSemente.textContent = aplicacao.partida.labirinto.semente;
+  elementos.rotuloSemente.textContent = aplicacao.partida?.semente ?? '-';
 }
 
 function atualizarTela() {
+  atualizarBotoes();
+  atualizarRotulos();
+  if (!aplicacao.partida) {
+    return;
+  }
   desenharEstadoAtual();
   atualizarPlacar();
   atualizarResultado();
   atualizarUltimaDecisao();
-  atualizarBotoes();
-  atualizarRotulos();
 }
 
 function criarItemDoHistorico(registro) {
@@ -208,44 +224,74 @@ function limparHistorico() {
   elementos.historicoVazio.hidden = false;
 }
 
-function executarUmPasso() {
-  if (partidaTerminou(aplicacao.partida)) {
-    pausar();
+async function executarUmPasso() {
+  const partida = aplicacao.partida;
+  if (!partida || partidaTerminou() || aplicacao.aguardandoServidor) {
     return;
   }
-  const registro = jogarProximaRodada(aplicacao.partida, lerConfiguracaoDosAgentes());
-  elementos.historicoVazio.hidden = true;
-  elementos.listaHistorico.prepend(criarItemDoHistorico(registro));
-  if (partidaTerminou(aplicacao.partida)) {
-    pausar();
+  const configuracaoDosAgentes = lerConfiguracaoDosAgentes();
+  aplicacao.aguardandoServidor = true;
+  atualizarBotoes();
+  try {
+    const resposta = await chamarApi('/api/jogar-rodada', {
+      estado: partida.estadoAtual,
+      configuracaoDosAgentes,
+      semente: partida.semente,
+    });
+    if (aplicacao.partida !== partida) {
+      return;
+    }
+    const registro = {
+      numeroDaRodada: resposta.numeroDaRodada,
+      estadoAntes: partida.estadoAtual,
+      estadoDepois: resposta.estadoDepois,
+      decisoes: resposta.decisoes,
+      causasDasColisoes: resposta.causasDasColisoes,
+      configuracaoDosAgentes,
+    };
+    partida.historico.push(registro);
+    partida.estadoAtual = resposta.estadoDepois;
+    partida.territorios = resposta.territorios;
+    partida.vencedor = resposta.vencedor;
+    elementos.historicoVazio.hidden = true;
+    elementos.listaHistorico.prepend(criarItemDoHistorico(registro));
+    mostrarErro('');
+  } catch (erro) {
+    mostrarErro(erro.message);
+    interromperReproducao();
+  } finally {
+    aplicacao.aguardandoServidor = false;
+  }
+  if (partidaTerminou()) {
+    interromperReproducao();
   }
   atualizarTela();
 }
 
-function agendarProximoPasso() {
-  aplicacao.temporizadorDoProximoPasso = setTimeout(() => {
-    executarUmPasso();
-    if (aplicacao.emReproducao) {
-      agendarProximoPasso();
+async function reproduzirContinuamente(identificadorDaReproducao) {
+  while (aplicacao.emReproducao && aplicacao.identificadorDaReproducao === identificadorDaReproducao && !partidaTerminou()) {
+    const inicio = performance.now();
+    await executarUmPasso();
+    const tempoRestante = 1000 / passosPorSegundoAtuais() - (performance.now() - inicio);
+    if (tempoRestante > 0) {
+      await esperar(tempoRestante);
     }
-  }, 1000 / passosPorSegundoAtuais());
+  }
 }
 
 function resolver() {
-  if (partidaTerminou(aplicacao.partida)) {
+  if (!aplicacao.partida || partidaTerminou()) {
     return;
   }
   aplicacao.emReproducao = true;
-  executarUmPasso();
-  if (aplicacao.emReproducao) {
-    agendarProximoPasso();
-  }
+  aplicacao.identificadorDaReproducao += 1;
   atualizarBotoes();
+  reproduzirContinuamente(aplicacao.identificadorDaReproducao);
 }
 
 function interromperReproducao() {
   aplicacao.emReproducao = false;
-  clearTimeout(aplicacao.temporizadorDoProximoPasso);
+  aplicacao.identificadorDaReproducao += 1;
 }
 
 function pausar() {
@@ -261,18 +307,35 @@ function alternarReproducao() {
   }
 }
 
-function comecarComNovoLabirinto() {
+async function carregarPartida(pedido) {
   interromperReproducao();
-  aplicacao.partida = iniciarPartida(Number(elementos.selecaoTamanho.value), gerarSementeAleatoria());
+  try {
+    const resposta = await chamarApi('/api/nova-partida', pedido);
+    aplicacao.partida = {
+      semente: resposta.semente,
+      tamanho: pedido.tamanho,
+      estadoAtual: resposta.estado,
+      territorios: resposta.territorios,
+      vencedor: null,
+      historico: [],
+    };
+    mostrarErro('');
+  } catch (erro) {
+    mostrarErro(erro.message);
+  }
   limparHistorico();
   atualizarTela();
 }
 
+function comecarComNovoLabirinto() {
+  return carregarPartida({ tamanho: Number(elementos.selecaoTamanho.value) });
+}
+
 function reiniciarNoMesmoLabirinto() {
-  interromperReproducao();
-  aplicacao.partida = reiniciarPartidaNoMesmoLabirinto(aplicacao.partida);
-  limparHistorico();
-  atualizarTela();
+  if (!aplicacao.partida) {
+    return comecarComNovoLabirinto();
+  }
+  return carregarPartida({ tamanho: aplicacao.partida.tamanho, semente: aplicacao.partida.semente });
 }
 
 function mudarVelocidade(variacao) {
@@ -292,8 +355,11 @@ function abrirArvoreDaRodada(registro) {
 }
 
 function abrirArvoreMaisRecente() {
+  if (!aplicacao.partida) {
+    return;
+  }
   const ultimoRegistro = aplicacao.partida.historico.at(-1);
-  if (partidaTerminou(aplicacao.partida) || (ultimoRegistro && aplicacao.emReproducao)) {
+  if (partidaTerminou() || (ultimoRegistro && aplicacao.emReproducao)) {
     abrirArvoreDaRodada(ultimoRegistro);
     return;
   }
@@ -305,14 +371,22 @@ function abrirArvoreMaisRecente() {
   });
 }
 
-function preencherEstrategiasDoLaranja() {
-  for (const [chave, estrategia] of Object.entries(ESTRATEGIAS)) {
+function preencherEstrategiasDoLaranja(estrategias) {
+  for (const estrategia of estrategias) {
+    aplicacao.estrategias[estrategia.chave] = estrategia;
     const opcao = document.createElement('option');
-    opcao.value = chave;
+    opcao.value = estrategia.chave;
     opcao.textContent = estrategia.nome;
     elementos.estrategiaLaranja.append(opcao);
   }
   elementos.estrategiaLaranja.value = 'minimax';
+}
+
+function ajustarLimitesDeProfundidade(profundidadeMinima, profundidadeMaxima) {
+  for (const controle of [elementos.profundidadeAzul, elementos.profundidadeLaranja]) {
+    controle.min = String(profundidadeMinima);
+    controle.max = String(profundidadeMaxima);
+  }
 }
 
 function campoDeTextoEmFoco() {
@@ -355,6 +429,19 @@ function registrarEventos() {
   window.addEventListener('resize', desenharEstadoAtual);
 }
 
-preencherEstrategiasDoLaranja();
-registrarEventos();
-comecarComNovoLabirinto();
+async function iniciarAplicacao() {
+  registrarEventos();
+  atualizarTela();
+  try {
+    const configuracao = await chamarApi('/api/configuracao');
+    definirConstantesDoJogo(configuracao);
+    preencherEstrategiasDoLaranja(configuracao.estrategias);
+    ajustarLimitesDeProfundidade(configuracao.profundidadeMinima, configuracao.profundidadeMaxima);
+  } catch (erro) {
+    mostrarErro(erro.message);
+    return;
+  }
+  await comecarComNovoLabirinto();
+}
+
+iniciarAplicacao();

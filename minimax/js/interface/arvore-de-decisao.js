@@ -1,29 +1,27 @@
-import { NOME_DE_EXIBICAO, aplicarRodadaPorPapel, oponenteDe } from '../logica/jogo.js';
-import {
-  DESFECHO_DERROTA,
-  DESFECHO_EMPATE,
-  DESFECHO_VITORIA,
-  LIMITE_INFERIOR,
-  LIMITE_SUPERIOR,
-  NO_MAX,
-  NO_MIN,
-  VALOR_DE_EMPATE,
-  VALOR_DE_VITORIA,
-  obterCaminhoPrincipal,
-} from '../logica/minimax.js';
-import { reconstruirArvoreDeDecisao } from '../logica/partida.js';
+import { chamarApi } from './api.js';
 import { desenharTabuleiro } from './desenho-do-tabuleiro.js';
 import {
   classeDoValorMinimax,
   descreverMovimento,
   descreverProfundidade,
+  formatarAlfa,
+  formatarBeta,
   formatarComSinal,
-  formatarLimiteAlfaBeta,
   formatarMilissegundos,
   formatarNumero,
   formatarValorMinimax,
+  obterConstantesDoJogo,
   setaDoMovimento,
 } from './formatacao.js';
+import { NOME_DE_EXIBICAO, oponenteDe } from './tabuleiro.js';
+
+const NO_MAX = 'MAX';
+const NO_MIN = 'MIN';
+const LIMITE_SUPERIOR = 'limiteSuperior';
+const LIMITE_INFERIOR = 'limiteInferior';
+const DESFECHO_VITORIA = 'vitoria';
+const DESFECHO_DERROTA = 'derrota';
+const DESFECHO_EMPATE = 'empate';
 
 const NAMESPACE_SVG = 'http://www.w3.org/2000/svg';
 const LARGURA_DO_NO = 88;
@@ -104,22 +102,22 @@ function listarNosVisiveis(no, nosExpandidos, lista = []) {
   return lista;
 }
 
-export function reconstruirEstadoDoNo(estadoRaiz, no, jogadorMaximizador) {
-  let estado = estadoRaiz;
-  for (let indice = 0; indice < no.caminho.length; indice += 2) {
-    const jogadaDoMaximizador = no.caminho[indice];
-    const jogadaDoMinimizador = no.caminho[indice + 1];
-    if (!jogadaDoMinimizador) {
-      return { estado, movimentoPendente: jogadaDoMaximizador };
-    }
-    estado = aplicarRodadaPorPapel(
-      estado,
-      jogadorMaximizador,
-      jogadaDoMaximizador.movimento,
-      jogadaDoMinimizador.movimento,
-    );
+function prepararArvore(no, caminhoAteAqui = []) {
+  no.caminho = caminhoAteAqui;
+  for (const filho of no.filhos) {
+    prepararArvore(filho, [...caminhoAteAqui, { jogador: filho.jogadorQueMoveu, movimento: filho.movimento }]);
   }
-  return { estado, movimentoPendente: null };
+  return no;
+}
+
+function obterCaminhoPrincipal(raiz) {
+  const caminho = [raiz];
+  let noAtual = raiz;
+  while (noAtual.indiceDoMelhorFilho >= 0) {
+    noAtual = noAtual.filhos[noAtual.indiceDoMelhorFilho];
+    caminho.push(noAtual);
+  }
+  return caminho;
 }
 
 function textoDoRotulo(no) {
@@ -193,17 +191,18 @@ function descreverTituloDoNo(no, nomeDoMaximizador, nomeDoMinimizador) {
 }
 
 function descreverDesfecho(no, nomeDoMaximizador, nomeDoMinimizador) {
+  const { valorDeVitoria, valorDeEmpate } = obterConstantesDoJogo();
   if (no.desfecho === DESFECHO_EMPATE) {
     return `<p>Os dois bateram na mesma rodada: <strong>empate</strong>.</p>
-      <p>Valor = <strong>${formatarComSinal(VALOR_DE_EMPATE)}</strong>: melhor que perder, mas pior que qualquer posição em que o jogo continua. Assim o agente só aceita empatar para fugir de uma derrota.</p>`;
+      <p>Valor = <strong>${formatarComSinal(valorDeEmpate)}</strong>: melhor que perder, mas pior que qualquer posição em que o jogo continua. Assim o agente só aceita empatar para fugir de uma derrota.</p>`;
   }
-  const rodadasQueSobraram = Math.abs(no.valor) - VALOR_DE_VITORIA;
+  const rodadasQueSobraram = Math.abs(no.valor) - valorDeVitoria;
   if (no.desfecho === DESFECHO_VITORIA) {
     return `<p>O ${nomeDoMinimizador} bateu e o ${nomeDoMaximizador} sobreviveu: <strong>vitória</strong>.</p>
-      <p>Valor = ${formatarNumero(VALOR_DE_VITORIA)} + ${rodadasQueSobraram} rodada(s) que sobraram na busca = <strong>${formatarNumero(no.valor)}</strong>. Vencer mais cedo vale mais.</p>`;
+      <p>Valor = ${formatarNumero(valorDeVitoria)} + ${rodadasQueSobraram} rodada(s) que sobraram na busca = <strong>${formatarNumero(no.valor)}</strong>. Vencer mais cedo vale mais.</p>`;
   }
   return `<p>O ${nomeDoMaximizador} bateu e o ${nomeDoMinimizador} sobreviveu: <strong>derrota</strong>.</p>
-    <p>Valor = −(${formatarNumero(VALOR_DE_VITORIA)} + ${rodadasQueSobraram}) = <strong>${formatarComSinal(no.valor)}</strong>. Se não tiver como escapar, perder mais tarde é menos ruim.</p>`;
+    <p>Valor = −(${formatarNumero(valorDeVitoria)} + ${rodadasQueSobraram}) = <strong>${formatarComSinal(no.valor)}</strong>. Se não tiver como escapar, perder mais tarde é menos ruim.</p>`;
 }
 
 function descreverFolhaHeuristica(no, nomeDoMaximizador, nomeDoMinimizador) {
@@ -230,16 +229,16 @@ function descreverEscolhaDoNo(no, nomeDoMaximizador, nomeDoMinimizador) {
 function descreverLimite(no, nomeDoMaximizador, nomeDoMinimizador) {
   const valorFormatado = formatarValorMinimax(no.valor);
   if (no.tipoDoValor === LIMITE_SUPERIOR) {
-    return `<p><strong>≤</strong> significa que a busca parou cedo: o valor real é no máximo ${valorFormatado}. Isso já basta, porque o ${nomeDoMaximizador} tem uma opção melhor garantida em outro ramo (α = ${formatarLimiteAlfaBeta(no.alfaNaEntrada)}).</p>`;
+    return `<p><strong>≤</strong> significa que a busca parou cedo: o valor real é no máximo ${valorFormatado}. Isso já basta, porque o ${nomeDoMaximizador} tem uma opção melhor garantida em outro ramo (α = ${formatarAlfa(no.alfaNaEntrada)}).</p>`;
   }
   if (no.tipoDoValor === LIMITE_INFERIOR) {
-    return `<p><strong>≥</strong> significa que o valor real é pelo menos ${valorFormatado}. O ${nomeDoMinimizador} já tem uma resposta melhor para ele em outro ramo (β = ${formatarLimiteAlfaBeta(no.betaNaEntrada)}), então nunca deixaria o jogo chegar aqui.</p>`;
+    return `<p><strong>≥</strong> significa que o valor real é pelo menos ${valorFormatado}. O ${nomeDoMinimizador} já tem uma resposta melhor para ele em outro ramo (β = ${formatarBeta(no.betaNaEntrada)}), então nunca deixaria o jogo chegar aqui.</p>`;
   }
   return '';
 }
 
 function descreverJanelaAlfaBeta(no) {
-  return `<p>Janela ao entrar no nó: <strong>α = ${formatarLimiteAlfaBeta(no.alfaNaEntrada)}</strong>, <strong>β = ${formatarLimiteAlfaBeta(no.betaNaEntrada)}</strong>. α é o melhor valor que o MAX já tem garantido; β é o melhor que o MIN já tem garantido. Quando α ≥ β, os irmãos restantes são podados.</p>`;
+  return `<p>Janela ao entrar no nó: <strong>α = ${formatarAlfa(no.alfaNaEntrada)}</strong>, <strong>β = ${formatarBeta(no.betaNaEntrada)}</strong>. α é o melhor valor que o MAX já tem garantido; β é o melhor que o MIN já tem garantido. Quando α ≥ β, os irmãos restantes são podados.</p>`;
 }
 
 function montarDescricaoDoNo(no, busca) {
@@ -299,6 +298,8 @@ export function criarVisualizadorDeArvore() {
     nosExpandidos: new Set(),
     noSelecionado: null,
     indiceDoZoom: INDICE_DO_ZOOM_PADRAO,
+    numeroDoPedidoDaArvore: 0,
+    numeroDoPedidoDaPrevia: 0,
     layout: null,
   };
 
@@ -447,15 +448,31 @@ export function criarVisualizadorDeArvore() {
     }
   }
 
+  async function desenharPreviaDoNo(no) {
+    const numeroDoPedido = ++situacao.numeroDoPedidoDaPrevia;
+    try {
+      const resposta = await chamarApi('/api/estado-do-no', {
+        estado: situacao.abertura.estadoRaiz,
+        caminho: no.caminho,
+        jogadorMaximizador: situacao.busca.jogadorMaximizador,
+      });
+      if (numeroDoPedido !== situacao.numeroDoPedidoDaPrevia) {
+        return;
+      }
+      desenharTabuleiro(elementos.previa, resposta.estado, {
+        territorios: resposta.territorios,
+        mostrarTerritorio: true,
+        movimentoPendente: resposta.movimentoPendente,
+      });
+    } catch (erro) {
+      avisar(erro.message);
+    }
+  }
+
   function renderizarDetalhes() {
     const no = situacao.noSelecionado;
-    const { estado, movimentoPendente } = reconstruirEstadoDoNo(
-      situacao.abertura.estadoRaiz,
-      no,
-      situacao.busca.jogadorMaximizador,
-    );
-    desenharTabuleiro(elementos.previa, estado, { mostrarTerritorio: true, movimentoPendente });
     elementos.textoDoNo.innerHTML = montarDescricaoDoNo(no, situacao.busca);
+    desenharPreviaDoNo(no);
   }
 
   function criarChip(rotulo, valor) {
@@ -498,9 +515,29 @@ export function criarVisualizadorDeArvore() {
     renderizarDetalhes();
   }
 
-  function carregarArvore(jogador) {
+  async function carregarArvore(jogador) {
     const configuracaoDoAgente = situacao.abertura.configuracaoDosAgentes[jogador];
-    situacao.busca = reconstruirArvoreDeDecisao(situacao.abertura.estadoRaiz, jogador, configuracaoDoAgente);
+    const numeroDoPedido = ++situacao.numeroDoPedidoDaArvore;
+    avisar('Calculando a árvore no Python…');
+    elementos.seletorDeAgente.disabled = true;
+    let busca;
+    try {
+      busca = await chamarApi('/api/arvore', {
+        estado: situacao.abertura.estadoRaiz,
+        jogador,
+        configuracaoDoAgente,
+      });
+    } catch (erro) {
+      avisar(erro.message);
+      return;
+    } finally {
+      elementos.seletorDeAgente.disabled = false;
+    }
+    if (numeroDoPedido !== situacao.numeroDoPedidoDaArvore) {
+      return;
+    }
+    prepararArvore(busca.arvore);
+    situacao.busca = busca;
     const caminhoPrincipal = obterCaminhoPrincipal(situacao.busca.arvore);
     situacao.nosDoCaminhoPrincipal = new Set(caminhoPrincipal);
     situacao.nosExpandidos = new Set(caminhoPrincipal);
@@ -513,6 +550,9 @@ export function criarVisualizadorDeArvore() {
   }
 
   function expandirCaminhoEscolhido() {
+    if (!situacao.busca) {
+      return;
+    }
     for (const no of situacao.nosDoCaminhoPrincipal) {
       situacao.nosExpandidos.add(no);
     }
@@ -521,6 +561,9 @@ export function criarVisualizadorDeArvore() {
   }
 
   function expandirMaisUmNivel() {
+    if (!situacao.busca) {
+      return;
+    }
     const nosVisiveis = listarNosVisiveis(situacao.busca.arvore, situacao.nosExpandidos);
     const nosParaExpandir = nosVisiveis.filter((no) => no.filhos.length > 0 && !situacao.nosExpandidos.has(no));
     const nosNovos = nosParaExpandir.reduce((total, no) => total + no.filhos.length, 0);
@@ -540,6 +583,9 @@ export function criarVisualizadorDeArvore() {
   }
 
   function recolherTudo() {
+    if (!situacao.busca) {
+      return;
+    }
     situacao.nosExpandidos = new Set([situacao.busca.arvore]);
     situacao.noSelecionado = situacao.busca.arvore;
     avisar('');
@@ -549,6 +595,9 @@ export function criarVisualizadorDeArvore() {
   }
 
   function mudarZoom(variacao) {
+    if (!situacao.busca) {
+      return;
+    }
     const novoIndice = Math.min(NIVEIS_DE_ZOOM.length - 1, Math.max(0, situacao.indiceDoZoom + variacao));
     if (novoIndice === situacao.indiceDoZoom) {
       return;
@@ -570,7 +619,7 @@ export function criarVisualizadorDeArvore() {
   elementos.botaoDiminuirZoom.addEventListener('click', () => mudarZoom(-1));
   elementos.botaoAumentarZoom.addEventListener('click', () => mudarZoom(1));
 
-  function abrir(abertura) {
+  async function abrir(abertura) {
     situacao.abertura = abertura;
     const laranjaUsaMinimax = abertura.configuracaoDosAgentes.laranja.estrategia === 'minimax';
     opcaoDoLaranja.disabled = !laranjaUsaMinimax;
@@ -579,7 +628,7 @@ export function criarVisualizadorDeArvore() {
     if (!elementos.modal.open) {
       elementos.modal.showModal();
     }
-    carregarArvore('azul');
+    await carregarArvore('azul');
   }
 
   function estaAberto() {

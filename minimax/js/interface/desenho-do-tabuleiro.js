@@ -2,18 +2,14 @@ import {
   CELULA_DISPUTADA,
   CELULA_DO_AZUL,
   CELULA_DO_LARANJA,
-  calcularTerritorios,
-} from '../logica/avaliacao.js';
-import { JOGADORES, listarTrilha } from '../logica/jogo.js';
-import {
   CELULA_PAREDE,
   CELULA_RASTRO_AZUL,
   CELULA_RASTRO_LARANJA,
   FORA_DO_TABULEIRO,
+  JOGADORES,
   colunaDoIndice,
   linhaDoIndice,
-  vizinhoNaDirecao,
-} from '../logica/tabuleiro.js';
+} from './tabuleiro.js';
 
 const OPACIDADE_DO_TERRITORIO = 0.16;
 const OPACIDADE_DAS_CELULAS_DO_RASTRO = 0.2;
@@ -66,11 +62,9 @@ function criarGeometria(tamanhoDoTabuleiro, larguraVisivel) {
   };
 }
 
-function desenharTerritorios(contexto, estado, geometria, cores) {
-  const { donoDeCadaCelula } = calcularTerritorios(estado);
+function desenharTerritorios(contexto, territorios, geometria, cores) {
   const corDoDono = { [CELULA_DO_AZUL]: cores.azul, [CELULA_DO_LARANJA]: cores.laranja };
-  for (let indice = 0; indice < donoDeCadaCelula.length; indice++) {
-    const dono = donoDeCadaCelula[indice];
+  territorios.donoDeCadaCelula.forEach((dono, indice) => {
     const canto = geometria.cantoDaCelula(indice);
     if (corDoDono[dono]) {
       contexto.globalAlpha = OPACIDADE_DO_TERRITORIO;
@@ -84,7 +78,7 @@ function desenharTerritorios(contexto, estado, geometria, cores) {
       contexto.arc(centro.x, centro.y, geometria.tamanhoDaCelula * 0.08, 0, Math.PI * 2);
       contexto.fill();
     }
-  }
+  });
   contexto.globalAlpha = 1;
 }
 
@@ -104,9 +98,9 @@ function desenharGrade(contexto, tamanhoDoTabuleiro, geometria, larguraVisivel, 
 
 function desenharParedes(contexto, estado, geometria, cores) {
   const recuo = Math.max(1, geometria.tamanhoDaCelula * 0.06);
-  for (let indice = 0; indice < estado.celulas.length; indice++) {
-    if (estado.celulas[indice] !== CELULA_PAREDE) {
-      continue;
+  estado.celulas.forEach((celula, indice) => {
+    if (celula !== CELULA_PAREDE) {
+      return;
     }
     const canto = geometria.cantoDaCelula(indice);
     const lado = geometria.tamanhoDaCelula - recuo * 2;
@@ -114,26 +108,26 @@ function desenharParedes(contexto, estado, geometria, cores) {
     contexto.fillRect(canto.x + recuo, canto.y + recuo, lado, lado);
     contexto.fillStyle = cores.brilhoDaParede;
     contexto.fillRect(canto.x + recuo, canto.y + recuo, lado, Math.max(1, lado * 0.14));
-  }
+  });
 }
 
 function desenharCelulasDoRastro(contexto, estado, geometria, cores) {
   const corDoRastro = { [CELULA_RASTRO_AZUL]: cores.azul, [CELULA_RASTRO_LARANJA]: cores.laranja };
   contexto.globalAlpha = OPACIDADE_DAS_CELULAS_DO_RASTRO;
-  for (let indice = 0; indice < estado.celulas.length; indice++) {
-    const cor = corDoRastro[estado.celulas[indice]];
+  estado.celulas.forEach((celula, indice) => {
+    const cor = corDoRastro[celula];
     if (!cor) {
-      continue;
+      return;
     }
     const canto = geometria.cantoDaCelula(indice);
     contexto.fillStyle = cor;
     contexto.fillRect(canto.x, canto.y, geometria.tamanhoDaCelula, geometria.tamanhoDaCelula);
-  }
+  });
   contexto.globalAlpha = 1;
 }
 
-function desenharTrilha(contexto, estado, jogador, geometria, cor) {
-  const centros = listarTrilha(estado, jogador).map((indice) => geometria.centroDaCelula(indice));
+function desenharTrilha(contexto, trilha, geometria, cor) {
+  const centros = trilha.map((indice) => geometria.centroDaCelula(indice));
   if (centros.length < 2) {
     return;
   }
@@ -170,8 +164,10 @@ function desenharCabeca(contexto, centro, raio, cor) {
 
 function desenharColisao(contexto, estado, jogador, geometria, cores) {
   const pontoDeColisao = estado.pontosDeColisao[jogador];
-  const centroDaCabeca = geometria.centroDaCelula(estado.posicoes[jogador]);
-  const centro = pontoDeColisao === FORA_DO_TABULEIRO ? centroDaCabeca : geometria.centroDaCelula(pontoDeColisao);
+  const centro =
+    pontoDeColisao === FORA_DO_TABULEIRO || pontoDeColisao === null
+      ? geometria.centroDaCelula(estado.posicoes[jogador])
+      : geometria.centroDaCelula(pontoDeColisao);
   const tamanho = geometria.tamanhoDaCelula * 0.34;
   contexto.save();
   contexto.strokeStyle = cores.colisao;
@@ -189,16 +185,11 @@ function desenharColisao(contexto, estado, jogador, geometria, cores) {
 }
 
 function desenharMovimentoPendente(contexto, estado, movimentoPendente, geometria, cores) {
-  const { jogador, movimento } = movimentoPendente;
+  const { jogador, destino } = movimentoPendente;
   const origem = geometria.centroDaCelula(estado.posicoes[jogador]);
-  const destino = vizinhoNaDirecao(estado.tamanho, estado.posicoes[jogador], movimento);
-  const cor = cores[jogador];
-  const alvo =
-    destino === FORA_DO_TABULEIRO
-      ? { x: origem.x, y: origem.y }
-      : geometria.centroDaCelula(destino);
+  const alvo = destino === FORA_DO_TABULEIRO ? origem : geometria.centroDaCelula(destino);
   contexto.save();
-  contexto.strokeStyle = cor;
+  contexto.strokeStyle = cores[jogador];
   contexto.lineWidth = Math.max(2, geometria.tamanhoDaCelula * 0.12);
   contexto.setLineDash([geometria.tamanhoDaCelula * 0.18, geometria.tamanhoDaCelula * 0.12]);
   contexto.beginPath();
@@ -212,7 +203,11 @@ function desenharMovimentoPendente(contexto, estado, movimentoPendente, geometri
   contexto.restore();
 }
 
-export function desenharTabuleiro(canvas, estado, { mostrarTerritorio = false, movimentoPendente = null } = {}) {
+export function desenharTabuleiro(
+  canvas,
+  estado,
+  { territorios = null, mostrarTerritorio = false, movimentoPendente = null } = {},
+) {
   const { contexto, larguraVisivel } = ajustarResolucaoDoCanvas(canvas);
   if (larguraVisivel === 0) {
     return;
@@ -223,15 +218,15 @@ export function desenharTabuleiro(canvas, estado, { mostrarTerritorio = false, m
   contexto.fillStyle = cores.fundo;
   contexto.fillRect(0, 0, larguraVisivel, larguraVisivel);
 
-  if (mostrarTerritorio) {
-    desenharTerritorios(contexto, estado, geometria, cores);
+  if (mostrarTerritorio && territorios) {
+    desenharTerritorios(contexto, territorios, geometria, cores);
   }
   desenharGrade(contexto, estado.tamanho, geometria, larguraVisivel, cores);
   desenharParedes(contexto, estado, geometria, cores);
   desenharCelulasDoRastro(contexto, estado, geometria, cores);
 
   for (const jogador of JOGADORES) {
-    desenharTrilha(contexto, estado, jogador, geometria, cores[jogador]);
+    desenharTrilha(contexto, estado.trilhas[jogador], geometria, cores[jogador]);
   }
   for (const jogador of JOGADORES) {
     desenharCabeca(contexto, geometria.centroDaCelula(estado.posicoes[jogador]), geometria.tamanhoDaCelula * 0.36, cores[jogador]);
