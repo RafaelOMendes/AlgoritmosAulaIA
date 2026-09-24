@@ -1,202 +1,213 @@
 <!doctype html>
 <html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Fuga no Labirinto · Minimax</title>
-    <link rel="stylesheet" href="estilos.css" />
-    <script type="module" src="js/interface/aplicacao.js"></script>
-  </head>
-  <body>
-    <div id="aviso-arquivo-local" class="aviso-arquivo-local" hidden>
-      <strong>Abra pelo servidor local.</strong>
-      O navegador bloqueia os módulos JavaScript quando a página é aberta direto do arquivo.
-      Rode <code>python servidor.py</code> dentro da pasta <code>minimax</code> e acesse
-      <code>http://localhost:8000</code>. É esse servidor que executa o Minimax em Python.
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fuga no Labirinto · Minimax</title>
+  <link rel="stylesheet" href="estilos.css" />
+  <script type="module" src="js/interface/aplicacao.js"></script>
+</head>
+
+<body>
+  <div id="aviso-arquivo-local" class="aviso-arquivo-local" hidden>
+    <strong>Abra pelo servidor local.</strong>
+    O navegador bloqueia os módulos JavaScript quando a página é aberta direto do arquivo.
+    Rode <code>python servidor.py</code> dentro da pasta <code>minimax</code> e acesse
+    <code>http://localhost:8000</code>. É esse servidor que executa o Minimax em Python.
+  </div>
+  <div id="aviso-de-erro" class="aviso-arquivo-local" role="alert" hidden></div>
+
+  <header class="cabecalho">
+    <div>
+      <h1>Fuga no Labirinto</h1>
+      <p class="subtitulo">
+        Duas motos de luz deixam um rastro sólido. Quem bater em parede ou rastro perde.
+        O agente <span class="texto-azul">Azul</span> decide cada movimento com o algoritmo <strong>Minimax</strong>.
+      </p>
     </div>
-    <div id="aviso-de-erro" class="aviso-arquivo-local" role="alert" hidden></div>
+    <p class="rotulo-semente">Labirinto nº <span id="rotulo-semente">-</span></p>
+  </header>
 
-    <header class="cabecalho">
-      <div>
-        <h1>Fuga no Labirinto</h1>
-        <p class="subtitulo">
-          Duas motos de luz deixam um rastro sólido. Quem bater em parede ou rastro perde.
-          O agente <span class="texto-azul">Azul</span> decide cada movimento com o algoritmo <strong>Minimax</strong>.
-        </p>
+  <main class="layout">
+    <section class="area-do-jogo" aria-label="Jogo">
+      <div class="placar">
+        <div class="placar-jogador placar-azul">
+          <span class="placar-nome">Azul</span>
+          <span class="placar-territorio"><span id="placar-territorio-azul">0</span> células</span>
+        </div>
+        <div class="placar-centro">
+          <span class="placar-rodada">Rodada <span id="placar-rodada">0</span></span>
+          <div class="barra-territorio" aria-hidden="true">
+            <span id="barra-territorio-azul" class="barra-azul"></span>
+            <span id="barra-territorio-laranja" class="barra-laranja"></span>
+          </div>
+        </div>
+        <div class="placar-jogador placar-laranja">
+          <span class="placar-nome">Laranja</span>
+          <span class="placar-territorio"><span id="placar-territorio-laranja">0</span> células</span>
+        </div>
       </div>
-      <p class="rotulo-semente">Labirinto nº <span id="rotulo-semente">-</span></p>
-    </header>
 
-    <main class="layout">
-      <section class="area-do-jogo" aria-label="Jogo">
-        <div class="placar">
-          <div class="placar-jogador placar-azul">
-            <span class="placar-nome">Azul</span>
-            <span class="placar-territorio"><span id="placar-territorio-azul">0</span> células</span>
-          </div>
-          <div class="placar-centro">
-            <span class="placar-rodada">Rodada <span id="placar-rodada">0</span></span>
-            <div class="barra-territorio" aria-hidden="true">
-              <span id="barra-territorio-azul" class="barra-azul"></span>
-              <span id="barra-territorio-laranja" class="barra-laranja"></span>
-            </div>
-          </div>
-          <div class="placar-jogador placar-laranja">
-            <span class="placar-nome">Laranja</span>
-            <span class="placar-territorio"><span id="placar-territorio-laranja">0</span> células</span>
+      <div class="moldura-do-tabuleiro">
+        <canvas id="tabuleiro" aria-label="Tabuleiro do labirinto"></canvas>
+        <div id="resultado-da-partida" class="resultado-da-partida" hidden>
+          <p id="titulo-do-resultado" class="titulo-do-resultado"></p>
+          <p id="detalhe-do-resultado" class="detalhe-do-resultado"></p>
+        </div>
+      </div>
+
+      <div class="barra-de-controles">
+        <div class="grupo-de-botoes">
+          <button id="botao-resolver" class="botao botao-principal" type="button">▶ Resolver</button>
+          <button id="botao-passo" class="botao" type="button" title="Atalho: seta para a direita">⏭ Próximo
+            passo</button>
+          <button id="botao-reiniciar" class="botao" type="button" title="Joga de novo no mesmo labirinto">↺
+            Reiniciar</button>
+          <button id="botao-novo-labirinto" class="botao" type="button" title="Gera um labirinto aleatório novo">⟳
+            Resetar (novo labirinto)</button>
+        </div>
+        <div class="controle-de-velocidade">
+          <button id="botao-mais-devagar" class="botao botao-icone" type="button" aria-label="Desacelerar">−</button>
+          <input id="controle-velocidade" type="range" min="0" max="8" step="1" value="3" aria-label="Velocidade" />
+          <button id="botao-mais-rapido" class="botao botao-icone" type="button" aria-label="Acelerar">+</button>
+          <span id="rotulo-velocidade" class="rotulo-velocidade">3 passos/s</span>
+        </div>
+      </div>
+      <p class="dica-de-atalhos">Atalhos: <kbd>Espaço</kbd> resolve/pausa · <kbd>→</kbd> próximo passo · <kbd>A</kbd>
+        abre a árvore</p>
+    </section>
+
+    <aside class="painel-lateral">
+      <section class="cartao" aria-labelledby="titulo-configuracao">
+        <h2 id="titulo-configuracao">Configuração</h2>
+        <label class="campo">
+          <span>Tamanho do labirinto</span>
+          <select id="selecao-tamanho">
+            <option value="13">Pequeno (13 × 13)</option>
+            <option value="17" selected>Médio (17 × 17)</option>
+            <option value="21">Grande (21 × 21)</option>
+          </select>
+        </label>
+        <div class="campo">
+          <span><span class="texto-azul">Azul</span> · Minimax · profundidade</span>
+          <div class="campo-com-valor">
+            <input id="profundidade-azul" type="range" min="1" max="15" value="4" />
+            <span id="rotulo-profundidade-azul" class="valor-do-campo"></span>
           </div>
         </div>
-
-        <div class="moldura-do-tabuleiro">
-          <canvas id="tabuleiro" aria-label="Tabuleiro do labirinto"></canvas>
-          <div id="resultado-da-partida" class="resultado-da-partida" hidden>
-            <p id="titulo-do-resultado" class="titulo-do-resultado"></p>
-            <p id="detalhe-do-resultado" class="detalhe-do-resultado"></p>
+        <label class="campo">
+          <span><span class="texto-laranja">Laranja</span> · estratégia</span>
+          <select id="estrategia-laranja"></select>
+        </label>
+        <div class="campo">
+          <span><span class="texto-laranja">Laranja</span> · profundidade</span>
+          <div class="campo-com-valor">
+            <input id="profundidade-laranja" type="range" min="1" max="15" value="1" />
+            <span id="rotulo-profundidade-laranja" class="valor-do-campo"></span>
           </div>
         </div>
-
-        <div class="barra-de-controles">
-          <div class="grupo-de-botoes">
-            <button id="botao-resolver" class="botao botao-principal" type="button">▶ Resolver</button>
-            <button id="botao-passo" class="botao" type="button" title="Atalho: seta para a direita">⏭ Próximo passo</button>
-            <button id="botao-reiniciar" class="botao" type="button" title="Joga de novo no mesmo labirinto">↺ Reiniciar</button>
-            <button id="botao-novo-labirinto" class="botao" type="button" title="Gera um labirinto aleatório novo">⟳ Resetar (novo labirinto)</button>
-          </div>
-          <div class="controle-de-velocidade">
-            <button id="botao-mais-devagar" class="botao botao-icone" type="button" aria-label="Desacelerar">−</button>
-            <input id="controle-velocidade" type="range" min="0" max="8" step="1" value="3" aria-label="Velocidade" />
-            <button id="botao-mais-rapido" class="botao botao-icone" type="button" aria-label="Acelerar">+</button>
-            <span id="rotulo-velocidade" class="rotulo-velocidade">3 passos/s</span>
-          </div>
-        </div>
-        <p class="dica-de-atalhos">Atalhos: <kbd>Espaço</kbd> resolve/pausa · <kbd>→</kbd> próximo passo · <kbd>A</kbd> abre a árvore</p>
+        <label class="campo-marcavel">
+          <input id="usar-poda" type="checkbox" checked />
+          <span>Usar poda alfa-beta</span>
+        </label>
+        <label class="campo-marcavel">
+          <input id="mostrar-territorio" type="checkbox" checked />
+          <span>Mostrar território (função de avaliação)</span>
+        </label>
+        <p class="observacao">As mudanças valem a partir da próxima rodada. O tamanho gera um labirinto novo.</p>
       </section>
 
-      <aside class="painel-lateral">
-        <section class="cartao" aria-labelledby="titulo-configuracao">
-          <h2 id="titulo-configuracao">Configuração</h2>
-          <label class="campo">
-            <span>Tamanho do labirinto</span>
-            <select id="selecao-tamanho">
-              <option value="13">Pequeno (13 × 13)</option>
-              <option value="17" selected>Médio (17 × 17)</option>
-              <option value="21">Grande (21 × 21)</option>
-            </select>
-          </label>
-          <div class="campo">
-            <span><span class="texto-azul">Azul</span> · Minimax · profundidade</span>
-            <div class="campo-com-valor">
-              <input id="profundidade-azul" type="range" min="1" max="5" value="4" />
-              <span id="rotulo-profundidade-azul" class="valor-do-campo"></span>
-            </div>
-          </div>
-          <label class="campo">
-            <span><span class="texto-laranja">Laranja</span> · estratégia</span>
-            <select id="estrategia-laranja"></select>
-          </label>
-          <div class="campo">
-            <span><span class="texto-laranja">Laranja</span> · profundidade</span>
-            <div class="campo-com-valor">
-              <input id="profundidade-laranja" type="range" min="1" max="5" value="1" />
-              <span id="rotulo-profundidade-laranja" class="valor-do-campo"></span>
-            </div>
-          </div>
-          <label class="campo-marcavel">
-            <input id="usar-poda" type="checkbox" checked />
-            <span>Usar poda alfa-beta</span>
-          </label>
-          <label class="campo-marcavel">
-            <input id="mostrar-territorio" type="checkbox" checked />
-            <span>Mostrar território (função de avaliação)</span>
-          </label>
-          <p class="observacao">As mudanças valem a partir da próxima rodada. O tamanho gera um labirinto novo.</p>
-        </section>
+      <section class="cartao" aria-labelledby="titulo-ultima-decisao">
+        <div class="titulo-com-acao">
+          <h2 id="titulo-ultima-decisao">Última decisão</h2>
+          <button id="botao-ver-arvore" class="botao botao-pequeno" type="button">Ver árvore de decisão</button>
+        </div>
+        <table class="tabela-decisao">
+          <thead>
+            <tr>
+              <th>Agente</th>
+              <th>Jogada</th>
+              <th>Valor</th>
+              <th>Nós</th>
+              <th>Podas</th>
+              <th>Tempo</th>
+            </tr>
+          </thead>
+          <tbody id="corpo-ultima-decisao"></tbody>
+        </table>
+        <p class="observacao">
+          <strong>Valor</strong> = território do agente − território do oponente no pior caso, olhando
+          a profundidade escolhida à frente. "vitória", "empate" e "derrota" indicam desfechos que o agente já enxerga.
+        </p>
+      </section>
 
-        <section class="cartao" aria-labelledby="titulo-ultima-decisao">
-          <div class="titulo-com-acao">
-            <h2 id="titulo-ultima-decisao">Última decisão</h2>
-            <button id="botao-ver-arvore" class="botao botao-pequeno" type="button">Ver árvore de decisão</button>
-          </div>
-          <table class="tabela-decisao">
-            <thead>
-              <tr>
-                <th>Agente</th>
-                <th>Jogada</th>
-                <th>Valor</th>
-                <th>Nós</th>
-                <th>Podas</th>
-                <th>Tempo</th>
-              </tr>
-            </thead>
-            <tbody id="corpo-ultima-decisao"></tbody>
-          </table>
-          <p class="observacao">
-            <strong>Valor</strong> = território do agente − território do oponente no pior caso, olhando
-            a profundidade escolhida à frente. "vitória", "empate" e "derrota" indicam desfechos que o agente já enxerga.
-          </p>
-        </section>
+      <section class="cartao cartao-historico" aria-labelledby="titulo-historico">
+        <h2 id="titulo-historico">Acompanhamento</h2>
+        <p id="historico-vazio" class="observacao">Clique em <strong>Resolver</strong> ou <strong>Próximo passo</strong>
+          para começar.</p>
+        <ol id="lista-historico" class="lista-historico" reversed></ol>
+      </section>
+    </aside>
+  </main>
 
-        <section class="cartao cartao-historico" aria-labelledby="titulo-historico">
-          <h2 id="titulo-historico">Acompanhamento</h2>
-          <p id="historico-vazio" class="observacao">Clique em <strong>Resolver</strong> ou <strong>Próximo passo</strong> para começar.</p>
-          <ol id="lista-historico" class="lista-historico" reversed></ol>
-        </section>
+  <dialog id="modal-arvore" class="modal-arvore" aria-labelledby="titulo-da-arvore">
+    <div class="modal-cabecalho">
+      <div>
+        <h2 id="titulo-da-arvore">Árvore de decisão</h2>
+        <p id="subtitulo-da-arvore" class="subtitulo"></p>
+      </div>
+      <div class="modal-acoes">
+        <label class="campo-inline">
+          <span>Agente</span>
+          <select id="agente-da-arvore">
+            <option value="azul">Azul</option>
+            <option value="laranja">Laranja</option>
+          </select>
+        </label>
+        <button id="fechar-arvore" class="botao botao-icone" type="button" aria-label="Fechar">✕</button>
+      </div>
+    </div>
+
+    <div id="resumo-da-busca" class="resumo-da-busca"></div>
+
+    <div class="ferramentas-da-arvore">
+      <div class="grupo-de-botoes">
+        <button id="expandir-caminho" class="botao botao-pequeno" type="button">Expandir caminho escolhido</button>
+        <button id="expandir-nivel" class="botao botao-pequeno" type="button">Expandir mais um nível</button>
+        <button id="recolher-arvore" class="botao botao-pequeno" type="button">Recolher tudo</button>
+        <button id="diminuir-zoom" class="botao botao-pequeno botao-icone" type="button"
+          aria-label="Diminuir zoom">−</button>
+        <button id="aumentar-zoom" class="botao botao-pequeno botao-icone" type="button"
+          aria-label="Aumentar zoom">+</button>
+        <span id="aviso-da-arvore" class="aviso-da-arvore" role="status"></span>
+      </div>
+      <ul class="legenda-da-arvore">
+        <li><span class="amostra amostra-max"></span>MAX: escolhe o maior valor</li>
+        <li><span class="amostra amostra-min"></span>MIN: escolhe o menor valor</li>
+        <li><span class="amostra amostra-caminho"></span>caminho escolhido</li>
+        <li><span class="amostra amostra-podado"></span>podado (alfa-beta)</li>
+        <li><strong>≤ / ≥</strong> limite obtido com poda</li>
+      </ul>
+    </div>
+
+    <div class="corpo-do-modal">
+      <div id="area-da-arvore" class="area-da-arvore">
+        <svg id="svg-da-arvore" xmlns="http://www.w3.org/2000/svg" role="tree"
+          aria-label="Árvore de decisão do Minimax"></svg>
+      </div>
+      <aside class="detalhes-do-no">
+        <canvas id="previa-do-no" class="previa-do-no" aria-label="Situação do tabuleiro neste nó"></canvas>
+        <div id="texto-do-no" class="texto-do-no"></div>
       </aside>
-    </main>
+    </div>
+  </dialog>
 
-    <dialog id="modal-arvore" class="modal-arvore" aria-labelledby="titulo-da-arvore">
-      <div class="modal-cabecalho">
-        <div>
-          <h2 id="titulo-da-arvore">Árvore de decisão</h2>
-          <p id="subtitulo-da-arvore" class="subtitulo"></p>
-        </div>
-        <div class="modal-acoes">
-          <label class="campo-inline">
-            <span>Agente</span>
-            <select id="agente-da-arvore">
-              <option value="azul">Azul</option>
-              <option value="laranja">Laranja</option>
-            </select>
-          </label>
-          <button id="fechar-arvore" class="botao botao-icone" type="button" aria-label="Fechar">✕</button>
-        </div>
-      </div>
+  <script>
+    if (location.protocol === 'file:') {
+      document.getElementById('aviso-arquivo-local').hidden = false;
+    }
+  </script>
+</body>
 
-      <div id="resumo-da-busca" class="resumo-da-busca"></div>
-
-      <div class="ferramentas-da-arvore">
-        <div class="grupo-de-botoes">
-          <button id="expandir-caminho" class="botao botao-pequeno" type="button">Expandir caminho escolhido</button>
-          <button id="expandir-nivel" class="botao botao-pequeno" type="button">Expandir mais um nível</button>
-          <button id="recolher-arvore" class="botao botao-pequeno" type="button">Recolher tudo</button>
-          <button id="diminuir-zoom" class="botao botao-pequeno botao-icone" type="button" aria-label="Diminuir zoom">−</button>
-          <button id="aumentar-zoom" class="botao botao-pequeno botao-icone" type="button" aria-label="Aumentar zoom">+</button>
-          <span id="aviso-da-arvore" class="aviso-da-arvore" role="status"></span>
-        </div>
-        <ul class="legenda-da-arvore">
-          <li><span class="amostra amostra-max"></span>MAX: escolhe o maior valor</li>
-          <li><span class="amostra amostra-min"></span>MIN: escolhe o menor valor</li>
-          <li><span class="amostra amostra-caminho"></span>caminho escolhido</li>
-          <li><span class="amostra amostra-podado"></span>podado (alfa-beta)</li>
-          <li><strong>≤ / ≥</strong> limite obtido com poda</li>
-        </ul>
-      </div>
-
-      <div class="corpo-do-modal">
-        <div id="area-da-arvore" class="area-da-arvore">
-          <svg id="svg-da-arvore" xmlns="http://www.w3.org/2000/svg" role="tree" aria-label="Árvore de decisão do Minimax"></svg>
-        </div>
-        <aside class="detalhes-do-no">
-          <canvas id="previa-do-no" class="previa-do-no" aria-label="Situação do tabuleiro neste nó"></canvas>
-          <div id="texto-do-no" class="texto-do-no"></div>
-        </aside>
-      </div>
-    </dialog>
-
-    <script>
-      if (location.protocol === 'file:') {
-        document.getElementById('aviso-arquivo-local').hidden = false;
-      }
-    </script>
-  </body>
 </html>

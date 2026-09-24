@@ -1,9 +1,10 @@
 import math
 import time
+import concurrent.futures
 from dataclasses import dataclass, field
 
 from .avaliacao import AvaliacaoDaPosicao, avaliar_posicao
-from .jogo import Estado, aplicar_rodada_por_papel, jogo_terminou, movimentos_possiveis, oponente_de
+from .jogo import Estado, aplicar_rodada_por_papel, fazer_rodada_por_papel_in_place, desfazer_rodada_in_place, jogo_terminou, movimentos_possiveis, oponente_de
 
 VALOR_DE_VITORIA = 1000
 VALOR_DE_EMPATE = -VALOR_DE_VITORIA // 2
@@ -182,11 +183,12 @@ def _valor_no_minimizador(
     indice_do_melhor_filho = -1
 
     for indice, movimento in enumerate(movimentos):
-        proximo_estado = aplicar_rodada_por_papel(
+        reversao = fazer_rodada_por_papel_in_place(
             estado, contexto.jogador_maximizador, movimento_do_maximizador, movimento
         )
         no_filho = _criar_no_filho(contexto, no, NO_MAX, movimento, alfa, beta)
-        valor, _ = _valor_no_maximizador(contexto, proximo_estado, rodadas_restantes - 1, alfa, beta, no_filho)
+        valor, _ = _valor_no_maximizador(contexto, estado, rodadas_restantes - 1, alfa, beta, no_filho)
+        desfazer_rodada_in_place(estado, reversao)
 
         if valor < menor_valor:
             menor_valor = valor
@@ -201,6 +203,41 @@ def _valor_no_minimizador(
 
     _concluir_no_interno(no, menor_valor, alfa, beta_na_entrada, indice_do_melhor_filho)
     return menor_valor, melhor_movimento
+
+
+def _trabalhador_raiz(argumentos) -> tuple:
+    (
+        jogador_maximizador,
+        jogador_minimizador,
+        movimento,
+        estado,
+        rodadas_restantes,
+        usar_poda_alfa_beta,
+        registrar_arvore,
+    ) = argumentos
+
+    contexto = ContextoDaBusca(
+        jogador_maximizador=jogador_maximizador,
+        jogador_minimizador=jogador_minimizador,
+        usar_poda_alfa_beta=usar_poda_alfa_beta,
+    )
+    
+    no_filho = None
+    if registrar_arvore:
+        no_filho = NoDaArvore(
+            tipo=NO_MIN,
+            jogador_da_vez=jogador_minimizador,
+            jogador_que_moveu=jogador_maximizador,
+            movimento=movimento,
+            alfa_na_entrada=-math.inf,
+            beta_na_entrada=math.inf,
+        )
+
+    valor, _ = _valor_no_minimizador(
+        contexto, estado, movimento, rodadas_restantes, -math.inf, math.inf, no_filho
+    )
+    
+    return valor, movimento, contexto.nos_visitados, contexto.ramos_podados, no_filho
 
 
 def buscar_melhor_movimento(
@@ -229,9 +266,52 @@ def buscar_melhor_movimento(
     )
 
     inicio = time.perf_counter()
-    valor, melhor_movimento = _valor_no_maximizador(
-        contexto, estado, profundidade_em_rodadas, -math.inf, math.inf, raiz
-    )
+    
+    if jogo_terminou(estado) or profundidade_em_rodadas == 0:
+        valor, melhor_movimento = _valor_no_maximizador(
+            contexto, estado, profundidade_em_rodadas, -math.inf, math.inf, raiz
+        )
+    else:
+        contexto.nos_visitados += 1
+        movimentos = movimentos_possiveis(estado, contexto.jogador_maximizador)
+        
+        argumentos_por_movimento = [
+            (
+                jogador_maximizador,
+                contexto.jogador_minimizador,
+                movimento,
+                estado,
+                profundidade_em_rodadas,
+                usar_poda_alfa_beta,
+                registrar_arvore
+            )
+            for movimento in movimentos
+        ]
+        
+        melhor_valor = -math.inf
+        melhor_movimento = None
+        indice_do_melhor_filho = -1
+        
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            resultados = list(executor.map(_trabalhador_raiz, argumentos_por_movimento))
+            
+        for indice, resultado in enumerate(resultados):
+            valor_movimento, movimento, nos_visitados, ramos_podados, no_filho = resultado
+            
+            contexto.nos_visitados += nos_visitados
+            contexto.ramos_podados += ramos_podados
+            
+            if raiz is not None and no_filho is not None:
+                raiz.filhos.append(no_filho)
+                
+            if valor_movimento > melhor_valor:
+                melhor_valor = valor_movimento
+                melhor_movimento = movimento
+                indice_do_melhor_filho = indice
+
+        _concluir_no_interno(raiz, melhor_valor, -math.inf, math.inf, indice_do_melhor_filho)
+        valor = melhor_valor
+
     tempo_em_milissegundos = (time.perf_counter() - inicio) * 1000
 
     return ResultadoDaBusca(

@@ -17,7 +17,7 @@ from .tabuleiro import DESLOCAMENTO_DE_CADA_DIRECAO, vizinho_na_direcao
 
 TAMANHO_MAXIMO_DO_LABIRINTO = 31
 PROFUNDIDADE_MINIMA = 1
-PROFUNDIDADE_MAXIMA = 5
+PROFUNDIDADE_MAXIMA = 10
 
 
 class ErroDeRequisicao(ValueError):

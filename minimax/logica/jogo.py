@@ -137,3 +137,87 @@ def descrever_causa_da_colisao(estado_antes: Estado, estado_depois: Estado, joga
     if celula_atingida == CELULA_DE_RASTRO_DO_JOGADOR[jogador]:
         return "bateu no próprio rastro"
     return "bateu no rastro do oponente"
+
+
+@dataclass(slots=True)
+class ReversaoDeRodada:
+    posicao_azul: int
+    posicao_laranja: int
+    vivo_azul: bool
+    vivo_laranja: bool
+    ultimo_movimento_azul: str | None
+    ultimo_movimento_laranja: str | None
+    ponto_colisao_azul: int | None
+    ponto_colisao_laranja: int | None
+    celula_modificada_azul: int | None
+    celula_modificada_laranja: int | None
+
+
+def fazer_rodada_in_place(estado: Estado, movimento_do_azul: str, movimento_do_laranja: str) -> ReversaoDeRodada:
+    reversao = ReversaoDeRodada(
+        estado.posicoes["azul"], estado.posicoes["laranja"],
+        estado.vivos["azul"], estado.vivos["laranja"],
+        estado.ultimos_movimentos["azul"], estado.ultimos_movimentos["laranja"],
+        estado.pontos_de_colisao["azul"], estado.pontos_de_colisao["laranja"],
+        None, None
+    )
+
+    vizinhos = tabela_de_vizinhos_por_direcao(estado.tamanho)
+    destino_do_azul = vizinhos[estado.posicoes["azul"]][movimento_do_azul]
+    destino_do_laranja = vizinhos[estado.posicoes["laranja"]][movimento_do_laranja]
+    houve_colisao_frontal = destino_do_azul == destino_do_laranja
+
+    azul_sobrevive = celula_esta_livre(estado, destino_do_azul) and not houve_colisao_frontal
+    laranja_sobrevive = celula_esta_livre(estado, destino_do_laranja) and not houve_colisao_frontal
+
+    if azul_sobrevive:
+        estado.celulas[destino_do_azul] = CELULA_RASTRO_AZUL
+        estado.posicoes["azul"] = destino_do_azul
+        estado.trilhas["azul"].append(destino_do_azul)
+        reversao.celula_modificada_azul = destino_do_azul
+    else:
+        estado.vivos["azul"] = False
+        estado.pontos_de_colisao["azul"] = destino_do_azul
+
+    if laranja_sobrevive:
+        estado.celulas[destino_do_laranja] = CELULA_RASTRO_LARANJA
+        estado.posicoes["laranja"] = destino_do_laranja
+        estado.trilhas["laranja"].append(destino_do_laranja)
+        reversao.celula_modificada_laranja = destino_do_laranja
+    else:
+        estado.vivos["laranja"] = False
+        estado.pontos_de_colisao["laranja"] = destino_do_laranja
+
+    estado.ultimos_movimentos["azul"] = movimento_do_azul
+    estado.ultimos_movimentos["laranja"] = movimento_do_laranja
+    estado.rodada += 1
+
+    return reversao
+
+
+def desfazer_rodada_in_place(estado: Estado, reversao: ReversaoDeRodada) -> None:
+    estado.rodada -= 1
+    
+    if reversao.celula_modificada_azul is not None:
+        estado.celulas[reversao.celula_modificada_azul] = CELULA_LIVRE
+        estado.trilhas["azul"].pop()
+    if reversao.celula_modificada_laranja is not None:
+        estado.celulas[reversao.celula_modificada_laranja] = CELULA_LIVRE
+        estado.trilhas["laranja"].pop()
+
+    estado.posicoes["azul"] = reversao.posicao_azul
+    estado.posicoes["laranja"] = reversao.posicao_laranja
+    estado.vivos["azul"] = reversao.vivo_azul
+    estado.vivos["laranja"] = reversao.vivo_laranja
+    estado.ultimos_movimentos["azul"] = reversao.ultimo_movimento_azul
+    estado.ultimos_movimentos["laranja"] = reversao.ultimo_movimento_laranja
+    estado.pontos_de_colisao["azul"] = reversao.ponto_colisao_azul
+    estado.pontos_de_colisao["laranja"] = reversao.ponto_colisao_laranja
+
+
+def fazer_rodada_por_papel_in_place(
+    estado: Estado, jogador_maximizador: str, movimento_do_maximizador: str, movimento_do_minimizador: str
+) -> ReversaoDeRodada:
+    if jogador_maximizador == "azul":
+        return fazer_rodada_in_place(estado, movimento_do_maximizador, movimento_do_minimizador)
+    return fazer_rodada_in_place(estado, movimento_do_minimizador, movimento_do_maximizador)
