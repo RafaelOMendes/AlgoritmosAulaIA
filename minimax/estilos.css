@@ -422,6 +422,101 @@ input:focus-visible {
   height: 16px;
 }
 
+.interruptor-turbo {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--borda);
+  border-radius: 10px;
+  background: var(--superficie-elevada);
+  cursor: pointer;
+}
+
+.interruptor-turbo input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+
+.trilho-do-interruptor {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--borda-forte);
+  transition: background 0.2s;
+}
+
+.trilho-do-interruptor::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--texto);
+  transition: transform 0.2s;
+}
+
+.interruptor-turbo input:checked + .trilho-do-interruptor {
+  background: var(--destaque);
+}
+
+.interruptor-turbo input:checked + .trilho-do-interruptor::after {
+  transform: translateX(18px);
+  background: var(--fundo);
+}
+
+.interruptor-turbo input:focus-visible + .trilho-do-interruptor {
+  outline: 2px solid var(--azul);
+  outline-offset: 2px;
+}
+
+.interruptor-turbo input:disabled + .trilho-do-interruptor {
+  opacity: 0.4;
+}
+
+.interruptor-turbo:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.texto-do-interruptor {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.texto-do-interruptor small {
+  color: var(--texto-suave);
+  font-size: 0.78rem;
+}
+
+.interruptor-turbo:has(input:checked) {
+  border-color: var(--destaque);
+}
+
+.interruptor-turbo:has(input:checked) strong {
+  color: var(--destaque);
+}
+
+.selo-motor {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--fundo);
+  background: var(--destaque);
+  vertical-align: middle;
+}
+
 .campo-inline {
   display: flex;
   align-items: center;

@@ -5,7 +5,11 @@ from typing import Callable
 from .avaliacao import contar_espaco_alcancavel
 from .jogo import Estado, movimentos_possiveis
 from .minimax import buscar_melhor_movimento
+from .minimax_cpp_wrapper import buscar_melhor_movimento_cpp
 from .tabuleiro import vizinho_na_direcao
+
+MOTOR_PYTHON = "python"
+MOTOR_CPP = "cpp"
 
 
 @dataclass(frozen=True)
@@ -13,6 +17,7 @@ class ConfiguracaoDoAgente:
     estrategia: str
     profundidade_em_rodadas: int = 1
     usar_poda_alfa_beta: bool = True
+    usar_turbo: bool = False
 
 
 @dataclass(frozen=True)
@@ -23,6 +28,7 @@ class DecisaoDoAgente:
     nos_visitados: int | None = None
     ramos_podados: int | None = None
     tempo_em_milissegundos: float | None = None
+    motor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -35,9 +41,8 @@ class Estrategia:
 def _decidir_com_minimax(
     estado: Estado, jogador: str, configuracao: ConfiguracaoDoAgente, gerador_aleatorio: random.Random
 ) -> DecisaoDoAgente:
-    resultado = buscar_melhor_movimento(
-        estado, jogador, configuracao.profundidade_em_rodadas, configuracao.usar_poda_alfa_beta
-    )
+    buscar = buscar_melhor_movimento_cpp if configuracao.usar_turbo else buscar_melhor_movimento
+    resultado = buscar(estado, jogador, configuracao.profundidade_em_rodadas, configuracao.usar_poda_alfa_beta)
     return DecisaoDoAgente(
         estrategia="minimax",
         movimento=resultado.movimento,
@@ -45,6 +50,7 @@ def _decidir_com_minimax(
         nos_visitados=resultado.nos_visitados,
         ramos_podados=resultado.ramos_podados,
         tempo_em_milissegundos=resultado.tempo_em_milissegundos,
+        motor=MOTOR_CPP if configuracao.usar_turbo else MOTOR_PYTHON,
     )
 
 

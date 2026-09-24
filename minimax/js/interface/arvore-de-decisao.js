@@ -492,6 +492,7 @@ export function criarVisualizadorDeArvore() {
       criarChip('Nós visitados', formatarNumero(busca.nosVisitados)),
       criarChip('Poda alfa-beta', busca.usarPodaAlfaBeta ? `${formatarNumero(busca.ramosPodados)} ramos podados` : 'desligada'),
       criarChip('Tempo', formatarMilissegundos(busca.tempoEmMilissegundos)),
+      busca.usarTurbo ? criarChip('Turbo', 'jogada em C++; árvore refeita em Python com a mesma busca') : '',
     ].join('');
   }
 

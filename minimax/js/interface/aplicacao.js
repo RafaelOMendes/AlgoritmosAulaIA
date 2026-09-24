@@ -41,6 +41,9 @@ const elementos = {
   profundidadeLaranja: document.getElementById('profundidade-laranja'),
   rotuloProfundidadeLaranja: document.getElementById('rotulo-profundidade-laranja'),
   usarPoda: document.getElementById('usar-poda'),
+  usarTurbo: document.getElementById('usar-turbo'),
+  campoTurbo: document.getElementById('campo-turbo'),
+  descricaoTurbo: document.getElementById('descricao-turbo'),
   mostrarTerritorio: document.getElementById('mostrar-territorio'),
   corpoUltimaDecisao: document.getElementById('corpo-ultima-decisao'),
   botaoVerArvore: document.getElementById('botao-ver-arvore'),
@@ -73,18 +76,41 @@ function passosPorSegundoAtuais() {
 
 function lerConfiguracaoDosAgentes() {
   const usarPodaAlfaBeta = elementos.usarPoda.checked;
+  const usarTurbo = elementos.usarTurbo.checked && !elementos.usarTurbo.disabled;
   return {
     azul: {
       estrategia: 'minimax',
       profundidadeEmRodadas: Number(elementos.profundidadeAzul.value),
       usarPodaAlfaBeta,
+      usarTurbo,
     },
     laranja: {
       estrategia: elementos.estrategiaLaranja.value,
       profundidadeEmRodadas: Number(elementos.profundidadeLaranja.value),
       usarPodaAlfaBeta,
+      usarTurbo,
     },
   };
+}
+
+function atualizarDescricaoDoTurbo() {
+  if (elementos.usarTurbo.disabled) {
+    return;
+  }
+  elementos.descricaoTurbo.textContent = elementos.usarTurbo.checked
+    ? 'Ligado: Minimax em C++, com threads'
+    : 'Desligado: Minimax em Python';
+}
+
+function configurarTurbo(turboDisponivel, motivoDoTurboIndisponivel) {
+  elementos.usarTurbo.disabled = !turboDisponivel;
+  if (!turboDisponivel) {
+    elementos.usarTurbo.checked = false;
+    elementos.descricaoTurbo.textContent = 'Indisponível: a versão em C++ não está compilada';
+    elementos.campoTurbo.title = motivoDoTurboIndisponivel;
+    return;
+  }
+  atualizarDescricaoDoTurbo();
 }
 
 function partidaTerminou() {
@@ -142,7 +168,7 @@ function criarLinhaDaDecisao(jogador, decisao) {
     usaMinimax ? `<span class="${classeDoValorMinimax(decisao.valor)}">${formatarValorMinimax(decisao.valor)}</span>` : '—',
     usaMinimax ? formatarNumero(decisao.nosVisitados) : '—',
     usaMinimax ? formatarNumero(decisao.ramosPodados) : '—',
-    usaMinimax ? formatarMilissegundos(decisao.tempoEmMilissegundos) : '—',
+    usaMinimax ? `${formatarMilissegundos(decisao.tempoEmMilissegundos)}${decisao.motor === 'cpp' ? ' <span class="selo-motor" title="Calculado em C++ (turbo)">C++</span>' : ''}` : '—',
   ];
   linha.innerHTML = celulas.map((conteudo) => `<td>${conteudo}</td>`).join('');
   if (decisao && !usaMinimax) {
@@ -424,6 +450,7 @@ function registrarEventos() {
   elementos.profundidadeLaranja.addEventListener('input', atualizarRotulos);
   elementos.estrategiaLaranja.addEventListener('change', atualizarRotulos);
   elementos.mostrarTerritorio.addEventListener('change', desenharEstadoAtual);
+  elementos.usarTurbo.addEventListener('change', atualizarDescricaoDoTurbo);
   elementos.botaoVerArvore.addEventListener('click', abrirArvoreMaisRecente);
   document.addEventListener('keydown', tratarAtalhosDoTeclado);
   window.addEventListener('resize', desenharEstadoAtual);
@@ -437,6 +464,7 @@ async function iniciarAplicacao() {
     definirConstantesDoJogo(configuracao);
     preencherEstrategiasDoLaranja(configuracao.estrategias);
     ajustarLimitesDeProfundidade(configuracao.profundidadeMinima, configuracao.profundidadeMaxima);
+    configurarTurbo(configuracao.turboDisponivel, configuracao.motivoDoTurboIndisponivel);
   } catch (erro) {
     mostrarErro(erro.message);
     return;

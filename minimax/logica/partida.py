@@ -76,6 +76,7 @@ def reconstruir_arvore_de_decisao(
         configuracao.profundidade_em_rodadas,
         configuracao.usar_poda_alfa_beta,
         registrar_arvore=True,
+        paralelizar_a_raiz=True if configuracao.usar_turbo else None,
     )
 
 

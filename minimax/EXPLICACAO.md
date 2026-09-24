@@ -2,7 +2,7 @@
 
 Este texto foi escrito para quem vai **explicar** o projeto. A seção 0 resume tudo em um minuto. As seções 1 a 4
 explicam o problema e o algoritmo com exemplos de verdade, tirados do código. As seções 5 e 6 mostram como a busca foi
-acelerada (paralelismo e versão em C++). A seção 8 percorre o código arquivo por arquivo, e as seções 11 e 12 trazem
+acelerada (paralelismo e o modo **Turbo**, em C++). A seção 8 percorre o código arquivo por arquivo, e as seções 11 e 12 trazem
 perguntas que o professor pode fazer e um roteiro para a apresentação.
 
 ## 0. Resumo em um minuto
@@ -17,8 +17,9 @@ perguntas que o professor pode fazer e um roteiro para a apresentação.
 - **Poda alfa-beta**: corta ramos que não podem mudar a decisão. A jogada escolhida é **sempre a mesma** do Minimax
   puro, mas visitando de 29% a 76% menos nós.
 - **Aceleração**: a partir da profundidade 5, cada movimento da raiz é calculado num **processo separado** (cerca de
-  2 vezes mais rápido). Existe também uma **versão experimental em C++** do mesmo algoritmo, cerca de 30 vezes mais
-  rápida, que não é usada pela página.
+  2 vezes mais rápido). E o interruptor **Turbo** da página troca o Python por uma versão em **C++** do mesmo
+  algoritmo, com uma thread por movimento da raiz: as decisões são idênticas e ficam de 35 a 80 vezes mais rápidas
+  (profundidade 10: 2,6 s em vez de 88 s).
 - **Resultado**: enxergar mais longe ganha. Profundidade 3 contra 1 venceu 99 de 120 partidas; contra um agente guloso
   que ignora o oponente, o Minimax venceu 19 de 20.
 
@@ -47,6 +48,8 @@ para um jogo de tabuleiro comum é que as jogadas são **simultâneas**; a seç�
 
 - **Python (pasta `logica/`)**: todo o algoritmo. O Minimax, a poda alfa-beta, a função de avaliação, as regras do
   jogo, a geração do labirinto e os agentes de comparação.
+- **C++ (`logica/minimax.cpp`)**: a mesma busca do Minimax, compilada, usada quando o interruptor **Turbo** está
+  ligado (seção 6.3). O Python continua cuidando de todo o resto.
 - **Servidor (`servidor.py`)**: um servidor HTTP da biblioteca padrão do Python que entrega a página e responde aos
   pedidos dela em JSON.
 - **Navegador (`index.html`, `estilos.css` e `js/interface/`)**: só a interface. Desenha o tabuleiro e a árvore,
@@ -343,7 +346,9 @@ permite comparar configurações diferentes na mesma situação.
 ## 6. Deixando a busca mais rápida
 
 O Minimax é caro por natureza (crescimento exponencial), e Python é uma linguagem interpretada, mais lenta que C++
-ou Java para laços como os da busca. O projeto usa três técnicas para acelerar, além da poda.
+ou Java para laços como os da busca. Além da poda, o projeto acelera a busca de três formas: fazendo e desfazendo a
+rodada no próprio estado (6.1), dividindo a raiz entre processos (6.2) e, com o interruptor **Turbo**, trocando o
+Python por uma versão em C++ do mesmo algoritmo (6.3).
 
 ### 6.1 Fazer e desfazer a rodada no próprio estado
 
@@ -427,67 +432,119 @@ Decisões tomadas:
 - **Os processos auxiliares ignoram o Ctrl+C** e são encerrados junto com o servidor. Se algum deles falhar, a busca é
   refeita no modo sequencial.
 
-### 6.3 Versão experimental em C++
+### 6.3 Modo Turbo: o Minimax em C++
 
-Para medir quanto do tempo se deve à linguagem, o projeto tem uma versão do mesmo Minimax escrita em **C++**:
+O interruptor **Turbo** da página decide qual versão do Minimax calcula as jogadas:
 
-- **`logica/minimax.cpp`**: o algoritmo. Mesmas regras, mesma busca em largura de território, mesmos valores
-  (1000 + rodadas, −500), mesma ordem de direções, fazer/desfazer a rodada e a raiz dividida entre threads com
-  `std::async` (em C++ as threads rodam de verdade em paralelo, porque não existe GIL).
-- **`logica/minimax_cpp_wrapper.py`**: chama a versão em C++ a partir do Python com `ctypes` (biblioteca padrão).
-  Carrega a biblioteca compilada, converte o estado e devolve um `ResultadoDaBusca`, como a versão em Python.
-- **`logica/minimax_cpp_lib.so`**: a biblioteca já compilada, para Linux (x86-64).
+- **desligado**: a versão em Python das seções 3 e 4 (com a raiz em paralelo a partir da profundidade 5);
+- **ligado**: a **mesma busca escrita em C++**, compilada, com **uma thread por movimento da raiz**.
 
-Medições no mesmo computador, dentro do Linux (WSL), porque a biblioteca compilada é para Linux:
+Em C++ as threads rodam de verdade ao mesmo tempo (não existe GIL) e custam quase nada para criar, então o Turbo
+divide a raiz com threads (`std::async`), e não com processos, em qualquer profundidade. O caminho de uma jogada com o
+Turbo ligado:
 
-| Profundidade | Python sequencial | C++ (raiz em threads) | Quantas vezes mais rápido |
-|---|---|---|---|
-| 3 | 24 ms | 1,1 ms | ~22× |
-| 4 | 90 ms | 3,2 ms | ~28× |
-| 5 | 398 ms | 13 ms | ~30× |
-| 6 | 1.893 ms | 60 ms | ~32× |
-| 7 | não medido | 201 ms | – |
-
-Diferenças em relação à versão em Python:
-
-- A página **não usa** a versão em C++: ela é um experimento, e não desenha a árvore (devolve só a jogada, o valor e
-  as estatísticas).
-- Quando não há nenhum movimento seguro, o C++ segue para "cima", enquanto o Python segue na direção em que estava.
-  As duas batem de qualquer jeito, então o valor é o mesmo; só a direção informada pode mudar.
-- O C++ conta **cortes** (quantas vezes α ≥ β aconteceu), e o Python conta **ramos descartados** (um corte pode
-  descartar mais de um irmão).
-
-O teste `testes/test_minimax_cpp.py` compara as duas versões em todas as posições de 5 partidas aleatórias, com
-profundidades de 1 a 3: o **valor** e a **quantidade de nós** são sempre iguais (comparando com o Python em modo paralelo, que também não poda a raiz), e a **jogada** é igual
-sempre que existe um movimento seguro. No Windows esse teste é pulado, porque a biblioteca compilada é de Linux.
-
-Para compilar de novo (Linux ou WSL, com o `g++` instalado), dentro da pasta `logica`:
-
-```bash
-g++ -shared -fPIC -O3 -std=c++11 -pthread minimax.cpp -o minimax_cpp_lib.so
+```
+Python                                           C++ (minimax_cpp_lib.dll no Windows, .so no Linux)
+──────                                           ─────────────────────────────────────────────────
+estrategias.py: Turbo ligado?
+  └─ buscar_melhor_movimento_cpp
+     (minimax_cpp_wrapper.py)
+     converte o estado em números      ───►     buscar_melhor_movimento_cpp
+     e chama a biblioteca (ctypes)                 uma thread por movimento da raiz,
+                                                   alfa-beta completo dentro de cada uma
+     monta o ResultadoDaBusca          ◄───     devolve jogada, valor, nós e ramos podados
 ```
 
-Um detalhe importante: o arquivo compilado **não pode** se chamar `minimax.so`. No Linux e no macOS o Python trata
-arquivos `.so` como módulos, e `from .minimax import ...` passaria a carregar o binário em vez do `minimax.py`: o
-projeto inteiro deixava de iniciar (`ImportError`). Por isso o nome é `minimax_cpp_lib.so`.
+Os arquivos:
+
+- **`logica/minimax.cpp`**: o algoritmo em C++. Mesmas regras, mesma busca em largura de território, mesmos valores
+  (1000 + rodadas, −500), mesma ordem de direções, fazer/desfazer a rodada e a raiz dividida entre threads.
+- **`logica/minimax_cpp_wrapper.py`**: a ponte. Carrega a biblioteca com `ctypes` (biblioteca padrão do Python),
+  confere a versão, converte o estado (células, posições, quem está vivo, últimos movimentos) e devolve um
+  `ResultadoDaBusca`, igual ao da versão em Python.
+- **`logica/minimax_cpp_lib.dll`**: a biblioteca já compilada para Windows 64 bits. Foi compilada com a biblioteca
+  de execução embutida (`/MT`), então só depende do próprio Windows e funciona em qualquer PC sem instalar nada.
+- **`compilar_cpp.py`**: compila de novo (seção 6.3.4).
+
+#### 6.3.1 As decisões são idênticas
+
+O C++ faz exatamente a mesma busca que o Python com a raiz em paralelo: além das regras e dos valores, segue na última
+direção quando não há saída (como o Python) e conta os ramos podados do mesmo jeito. O teste
+`testes/test_minimax_cpp.py` compara as duas versões em todas as posições de 5 partidas aleatórias, nas
+profundidades 1 a 3, com e sem poda: **jogada, valor, nós visitados e ramos podados são sempre iguais**.
+
+O C++ não monta a árvore (seria lento e ocuparia muita memória). Quando o Turbo está ligado e o modal é aberto, o
+Python refaz a mesma busca, com a raiz em paralelo, registrando a árvore. Como as duas versões são idênticas, a
+árvore mostra os mesmos números da decisão, e o modal avisa com o selo "Turbo" que ela foi refeita em Python.
+
+#### 6.3.2 Quanto mais rápido
+
+Medições no Windows, primeira jogada de um labirinto 17 × 17 (semente 7), comparando com o modo que a página usa em
+Python (sequencial até a profundidade 4 e raiz em processos a partir da 5):
+
+| Profundidade | Nós visitados (C++) | Python | C++ (Turbo) | Quantas vezes mais rápido |
+|---|---|---|---|---|
+| 1 | 21 | 1 ms | 0,3 ms | ~3× |
+| 2 | 172 | 5 ms | 0,3 ms | ~20× |
+| 3 | 1.060 | 35 ms | 0,6 ms | ~55× |
+| 4 | 4.549 | 144 ms | 1,8 ms | ~80× |
+| 5 | 18.899 | 312 ms | 8,6 ms | ~36× |
+| 6 | 77.595 | 1.296 ms | 34 ms | ~38× |
+| 7 | 236.598 | 3.828 ms | 102 ms | ~38× |
+| 8 | 553.158 | 9.022 ms | 235 ms | ~38× |
+| 9 | 2.047.898 | 33.011 ms | 937 ms | ~35× |
+| 10 | 6.192.460 | 87.881 ms | 2.579 ms | ~34× |
+
+Numa partida inteira com o Azul na profundidade 10 e o Laranja na 6, o Turbo jogou as 67 rodadas em 5 segundos. Em
+Python, só a primeira jogada leva 88 s.
+
+#### 6.3.3 Por que o C++ é tão mais rápido
+
+- **Compilado x interpretado**: o C++ vira código de máquina antes de rodar. O Python interpreta cada operação na
+  hora, confere os tipos a cada passo e guarda cada número como um objeto na memória.
+- **Threads de verdade**: sem GIL, as threads do C++ rodam ao mesmo tempo sem precisar criar processos nem copiar o
+  estado entre eles.
+- **Memória reaproveitada**: cada thread usa sempre os mesmos vetores na busca em largura do território, e a lista de
+  movimentos é um vetor fixo de 4 posições. A primeira versão alocava vetores novos em cada nó e, no Windows, ficava
+  só cerca de 7 vezes mais rápida que o Python; reaproveitando a memória, passou a cerca de 35 vezes.
+
+#### 6.3.4 Cuidados tomados
+
+- **Tabelas por busca**: a primeira versão guardava a tabela de vizinhos numa variável global, refeita quando o
+  tamanho do labirinto mudava. Com duas abas abertas em labirintos de tamanhos diferentes, duas buscas ao mesmo tempo
+  poderiam estragar a tabela uma da outra. Agora cada busca monta a sua (leva microssegundos), e um teste roda buscas
+  simultâneas em quatro tamanhos.
+- **Versão da interface**: a biblioteca informa a sua versão (`versao_da_interface_cpp`). Se não for a esperada, o
+  Python recusa a biblioteca, em vez de chamá-la com os parâmetros errados (o que poderia derrubar o servidor).
+- **Sem biblioteca, sem Turbo**: se a biblioteca não existir ou estiver desatualizada, a página desativa o
+  interruptor e mostra o motivo, e a API recusa pedidos com Turbo com uma mensagem clara. O resto do projeto continua
+  funcionando só com Python.
+- **Nome do arquivo**: a biblioteca **não pode** se chamar `minimax.so`. No Linux e no macOS o Python trata arquivos
+  `.so` como módulos, e `from .minimax import ...` passaria a carregar o binário em vez do `minimax.py`: o projeto
+  inteiro deixava de iniciar (`ImportError`). Por isso o nome é `minimax_cpp_lib`.
+
+Para compilar de novo, dentro da pasta `minimax`:
+
+```bash
+python compilar_cpp.py
+```
+
+No Windows o script usa as **Ferramentas de Build do Visual Studio** (com o compilador C++) e gera
+`minimax_cpp_lib.dll`. No Linux ou no WSL ele usa o `g++` (no Ubuntu: `sudo apt install g++`) e gera
+`minimax_cpp_lib.so`. A `.dll` para Windows já vem compilada no projeto; para usar o Turbo no Linux, basta rodar o
+script uma vez.
 
 ### 6.4 Limites de profundidade
 
-- **Para jogar: de 1 a 10.** Nas medições, cada rodada a mais multiplicou o trabalho por 2 a 4. Tempo da primeira
-  jogada no labirinto 17 × 17 da semente 7 (a mais cara, porque o labirinto ainda está vazio), com a raiz em paralelo:
-
-  | Profundidade | Nós visitados | Tempo |
-  |---|---|---|
-  | 7 | 236.598 | cerca de 4 s |
-  | 8 | 553.158 | 9 s |
-  | 9 | 2.047.898 | 33 s |
-  | 10 | 6.192.460 | 88 s |
+- **Para jogar: de 1 a 10.** Nas medições, cada rodada a mais multiplicou o trabalho por 2 a 4. A tabela da seção
+  6.3.2 mostra os tempos da primeira jogada (a mais cara, porque o labirinto ainda está vazio): sem o Turbo, a
+  profundidade 10 leva 88 s; com o Turbo, 2,6 s.
 
   Conforme os rastros ocupam o labirinto sobram menos direções livres, e as jogadas seguintes tendem a ser mais
-  rápidas. O tamanho do labirinto pesa muito: num 13 × 13 (semente 3), a profundidade 10 levou 5 s na primeira jogada,
-  então para demonstrar profundidades altas vale usar o labirinto menor. As profundidades 8 a 10 servem para mostrar o crescimento exponencial na prática. A página não tem como
-  cancelar uma busca em andamento: depois de pedir uma jogada, é preciso esperar ela terminar (ou parar o servidor com
-  Ctrl+C). Se os dois agentes usarem Minimax profundo, cada rodada leva a soma dos dois tempos.
+  rápidas. O tamanho do labirinto também pesa muito: em Python, num 13 × 13 (semente 3), a profundidade 10 levou 5 s
+  na primeira jogada. Sem o Turbo, as profundidades 8 a 10 servem para mostrar o crescimento exponencial na prática.
+  A página não tem como cancelar uma busca em andamento: depois de pedir uma jogada, é preciso esperar ela terminar
+  (ou parar o servidor com Ctrl+C). Se os dois agentes usarem Minimax profundo, cada rodada leva a soma dos dois tempos.
 - **Para desenhar a árvore: até 5.** A árvore de profundidade 5 sem poda já tem 61.212 nós; a de 6 tem 319.054,
   dezenas de megabytes de JSON para o navegador desenhar. Acima de 5 o modal mostra um aviso explicando o limite.
 
@@ -503,6 +560,7 @@ projeto inteiro deixava de iniciar (`ImportError`). Por isso o nome é `minimax_
 | Função de avaliação (território) | `logica/avaliacao.py`, `avaliar_posicao` e `calcular_territorios` |
 | Rodada simultânea e colisões | `logica/jogo.py`, `aplicar_rodada` e `fazer_rodada_in_place` |
 | Raiz em paralelo | `logica/minimax.py`, `_buscar_com_a_raiz_em_paralelo` e `_avaliar_ramo_da_raiz` |
+| Modo Turbo (C++) | `logica/minimax.cpp`, `buscar_melhor_movimento_cpp`; escolha em `logica/estrategias.py`, `_decidir_com_minimax` |
 | Labirinto aleatório e simétrico | `logica/labirinto.py`, `gerar_labirinto` |
 | Árvore mostrada no modal | `logica/minimax.py`, `NoDaArvore`; `js/interface/arvore-de-decisao.js` |
 
@@ -590,21 +648,32 @@ por extenso para explicar o que fazem.
 - **`obter_caminho_principal`**: segue o melhor filho de cada nó a partir da raiz. É a sequência de jogadas que o
   Minimax espera que aconteça (em dourado no modal).
 
-### 8.6 `logica/minimax.cpp` e `logica/minimax_cpp_wrapper.py`
+### 8.6 Modo Turbo: `logica/minimax.cpp`, `logica/minimax_cpp_wrapper.py` e `compilar_cpp.py`
 
-A versão experimental em C++ e a ponte que a chama a partir do Python (seção 6.3):
+A versão em C++ usada pelo interruptor **Turbo**, a ponte que a chama a partir do Python e o script que a compila
+(seção 6.3):
 
-- **`minimax.cpp`**: `valor_no_maximizador` e `valor_no_minimizador` (a mesma recursão com poda),
-  `calcular_territorios` (a mesma busca em largura), `fazer_rodada` e `desfazer_rodada`, e a função exportada
-  `buscar_melhor_movimento_cpp`, que dispara uma thread por movimento da raiz.
-- **`minimax_cpp_wrapper.py`**: `carregar_biblioteca_cpp` (carrega a biblioteca uma única vez e avisa com o comando
-  de compilação se ela não existir) e `buscar_melhor_movimento_cpp` (mesma interface da versão em Python, sem árvore).
+- **`minimax.cpp`**:
+  - `valor_no_maximizador` e `valor_no_minimizador`: a mesma recursão com poda da versão em Python;
+  - `calcular_territorios`: a mesma busca em largura simultânea, reaproveitando os vetores de cada thread;
+  - `fazer_rodada` e `desfazer_rodada`: a rodada simultânea, com a reversão (inclusive dos últimos movimentos);
+  - `movimentos_possiveis`: as direções seguras num vetor fixo de 4 posições, ou a última direção se não houver
+    nenhuma;
+  - `criar_tabelas`: os vizinhos de cada célula, montados a cada busca (para buscas simultâneas não se misturarem);
+  - `buscar_melhor_movimento_cpp` (exportada): dispara uma thread por movimento da raiz e junta os resultados;
+  - `versao_da_interface_cpp` (exportada): a versão que o Python confere antes de usar a biblioteca.
+- **`minimax_cpp_wrapper.py`**: `carregar_biblioteca_cpp` (carrega a biblioteca uma única vez, confere a versão e
+  explica como compilar se algo estiver errado), `motivo_da_biblioteca_cpp_indisponivel` (usado pela página para
+  ligar ou desativar o interruptor) e `buscar_melhor_movimento_cpp` (mesma interface da versão em Python, sem árvore).
+- **`compilar_cpp.py`**: no Windows, encontra as Ferramentas de Build do Visual Studio (`vswhere`), prepara o ambiente
+  (`vcvars64.bat`) e compila com `cl`; no Linux, compila com `g++`. Depois confere se a biblioteca nova carrega.
 
 ### 8.7 `logica/estrategias.py`
 
-- **`ConfiguracaoDoAgente`** e **`DecisaoDoAgente`**: o que cada agente recebe (estratégia, profundidade, poda) e o
-  que devolve (jogada e estatísticas).
-- **Minimax** (`_decidir_com_minimax`): chama `buscar_melhor_movimento` com a profundidade configurada.
+- **`ConfiguracaoDoAgente`** e **`DecisaoDoAgente`**: o que cada agente recebe (estratégia, profundidade, poda e
+  Turbo) e o que devolve (jogada, estatísticas e o motor usado, `python` ou `cpp`).
+- **Minimax** (`_decidir_com_minimax`): chama `buscar_melhor_movimento` (Python) ou, com o Turbo ligado,
+  `buscar_melhor_movimento_cpp` (C++), com a profundidade configurada.
 - **Guloso** (`_decidir_com_estrategia_gulosa`): escolhe a direção que deixa mais células alcançáveis logo em
   seguida, sem pensar no oponente. Serve de comparação.
 - **Aleatório** (`_decidir_aleatoriamente`): sorteia entre as direções seguras.
@@ -618,7 +687,8 @@ A versão experimental em C++ e a ponte que a chama a partir do Python (seção 
   o agente aleatório ser reproduzível mesmo com o servidor sem guardar nada entre um pedido e outro.
 - **`simular_partida_completa`**: joga uma partida inteira sem interface (usada nos testes e nas medições da seção 9).
 - **`reconstruir_arvore_de_decisao`** e **`reconstruir_estado_do_no`**: refazem a busca com a árvore registrada e o
-  tabuleiro de um nó da árvore, para o modal.
+  tabuleiro de um nó da árvore, para o modal. Se a decisão foi tomada com o Turbo, a árvore é refeita com a raiz em
+  paralelo, que é a mesma busca que o C++ faz.
 
 ### 8.9 `logica/api.py`
 
@@ -627,9 +697,10 @@ A ponte entre o Python e o navegador:
 - **`estado_para_json`** / **`estado_de_json`**, **`territorios_para_json`**, **`decisao_para_json`** e
   **`no_para_json`**: convertem os objetos Python para JSON e de volta. Os valores ±∞ de α e β viram `null`, porque
   JSON não aceita infinito.
-- **`configuracao_do_agente_de_json`**: valida a estratégia e a profundidade (1 a 10) recebidas da página.
+- **`configuracao_do_agente_de_json`**: valida a estratégia, a profundidade (1 a 10) e o Turbo recebidos da página.
+  Se o Turbo for pedido sem a biblioteca C++ disponível, responde com o motivo.
 - **`montar_arvore_de_decisao`**: recusa, com uma mensagem clara, árvores acima da profundidade 5.
-- **Rotas** (`ROTAS_DA_API`): `/api/configuracao` (estratégias e constantes do jogo), `/api/nova-partida`,
+- **Rotas** (`ROTAS_DA_API`): `/api/configuracao` (estratégias, constantes do jogo e se o Turbo está disponível), `/api/nova-partida`,
   `/api/jogar-rodada`, `/api/arvore` e `/api/estado-do-no`.
 - O servidor não guarda o estado da partida: a página envia o estado atual em cada pedido e recebe o próximo.
 
@@ -650,7 +721,9 @@ A ponte entre o Python e o navegador:
 - **`aplicacao.js`**: controlador da página. Lê a configuração, pede cada rodada ao Python (`/api/jogar-rodada`),
   controla **Resolver/Pausar**, **Próximo passo**, **Reiniciar** e **Resetar**, a **velocidade** (espera o tempo que
   falta para completar o intervalo `1000 / passos por segundo` depois de cada resposta), o placar, o resultado final,
-  a tabela da última decisão, a lista de acompanhamento e os atalhos de teclado.
+  a tabela da última decisão, a lista de acompanhamento e os atalhos de teclado. Também cuida do interruptor
+  **Turbo**: desativa quando o servidor avisa que o C++ não está disponível, envia a escolha em cada pedido e mostra
+  o selo "C++" no tempo das decisões calculadas em C++.
 - **`api.js`**: envia os pedidos ao servidor e transforma respostas de erro em mensagens na tela.
 - **`desenho-do-tabuleiro.js`**: desenha o estado no `<canvas>`: grade, território, paredes, as **trilhas de luz**,
   as cabeças, o movimento pendente (tracejado, na prévia dos nós MIN) e um X vermelho onde houve batida.
@@ -664,7 +737,7 @@ A ponte entre o Python e o navegador:
 
 ### 8.12 `testes/`
 
-33 testes com `unittest`:
+36 testes com `unittest`:
 
 - **Labirinto**: mesma semente gera o mesmo labirinto; sementes diferentes geram labirintos diferentes; o labirinto é
   simétrico; todas as células livres são alcançáveis.
@@ -677,9 +750,12 @@ A ponte entre o Python e o navegador:
   Minimax puro** em dezenas de posições; a árvore registrada bate com as estatísticas da busca.
 - **Raiz em paralelo**: só paraleliza a partir da profundidade 5; dá **a mesma jogada e o mesmo valor que a busca
   sequencial**; a árvore paralela é coerente e não tem poda na raiz.
-- **Versão em C++**: mesmo valor, mesma quantidade de nós e mesma jogada que o Python (pulado no Windows).
+- **Modo Turbo (C++)**: **mesma jogada, mesmo valor, mesmos nós e mesmas podas que o Python**, com e sem poda;
+  buscas simultâneas em labirintos de tamanhos diferentes não se misturam; com o Turbo ligado, a API usa o C++ e a
+  árvore refeita em Python bate com a decisão. Esses testes são pulados se a biblioteca não estiver compilada.
 - **Partidas e API**: partidas sempre terminam com um resultado válido; o Minimax mais profundo vence o mais raso na
-  maioria dos labirintos; as respostas da API são JSON válido; a árvore acima da profundidade 5 é recusada.
+  maioria dos labirintos; as respostas da API são JSON válido; a árvore acima da profundidade 5 é recusada; sem a
+  biblioteca C++, o Turbo é recusado com uma mensagem clara.
 
 ## 9. Resultados
 
@@ -706,7 +782,8 @@ lados, para descontar qualquer vantagem de posição:
   Com 60 partidas de cada lado, o resultado se inverteu. Vinte partidas eram poucas para tirar conclusões.
 - **Desempenho**: uma decisão com profundidade 4 e poda leva cerca de 140 ms no início da partida e bem menos depois,
   quando sobra menos espaço livre. Na velocidade máxima, a página chegou a cerca de 29 rodadas por segundo. As
-  profundidades 5 a 10 usam a raiz em paralelo (seção 6.2).
+  profundidades 5 a 10 usam a raiz em paralelo (seção 6.2). Com o Turbo, uma partida inteira com profundidade 10
+  contra 6 terminou em 5 segundos (seção 6.3).
 
 ## 10. Decisões de projeto e limitações
 
@@ -721,10 +798,14 @@ lados, para descontar qualquer vantagem de posição:
 - **Python no servidor, interface no navegador**: o algoritmo ficou em Python e a tela em HTML/JavaScript, ligados
   por uma API JSON simples. O servidor não guarda estado, o que facilita os testes e permite abrir várias abas ao
   mesmo tempo. O custo é enviar o tabuleiro em cada pedido, algo pequeno (menos de 1.000 números).
-- **Velocidade do Python**: Python é mais lento que C++ para esse tipo de laço (cerca de 30 vezes, seção 6.3). Por
+- **Velocidade do Python**: Python é mais lento que C++ para esse tipo de laço (cerca de 35 vezes, seção 6.3). Por
   isso a avaliação usa uma única busca em largura e tabelas de vizinhos pré-calculadas, e as profundidades maiores
-  dividem a raiz entre processos. A versão em C++ mostra o ganho possível, mas ficou fora da página para o projeto
-  continuar rodando só com Python, em qualquer sistema, sem compilar nada.
+  dividem a raiz entre processos. O Turbo usa o C++ quando é preciso velocidade, mas é opcional: sem a biblioteca
+  compilada, o projeto roda inteiro em Python.
+- **Duas versões do mesmo algoritmo**: manter Python e C++ exige que as duas façam exatamente a mesma coisa. Os
+  testes comparam as duas em centenas de posições, e a biblioteca tem uma versão de interface conferida pelo Python.
+- **A árvore do Turbo é refeita em Python**: o C++ só devolve a jogada e as estatísticas. Isso deixa o C++ simples e
+  rápido, e o modal continua mostrando a busca exata porque as duas versões são idênticas.
 
 ## 11. Perguntas que o professor pode fazer
 
@@ -766,10 +847,20 @@ interpretador. O custo é perder a poda na raiz (seção 6.2).
 Sim. Cada ramo da raiz é calculado com a janela completa (α = −∞, β = +∞), então os valores da raiz são exatos, e a
 raiz escolhe o maior do mesmo jeito. Os testes comparam as duas versões. Só a contagem de nós muda.
 
-**Para que serve a versão em C++ se a página não usa?**
-Para medir o custo da linguagem: o mesmo algoritmo, com as mesmas decisões (conferidas por teste), fica cerca de 30
-vezes mais rápido. A profundidade 7 levou 0,2 s em C++, contra cerca de 4 s no Python com a raiz em paralelo. Ela
-ficou fora da página porque precisaria ser compilada para cada sistema.
+**O que o botão Turbo faz?**
+Troca o Python pela versão em C++ do mesmo Minimax, com uma thread por movimento da raiz (seção 6.3). As decisões são
+exatamente as mesmas (jogada, valor, nós e podas conferidos por teste), mas de 35 a 80 vezes mais rápidas: a
+profundidade 10 cai de 88 s para 2,6 s na primeira jogada.
+
+**Por que o C++ é tão mais rápido que o Python?**
+Porque é compilado para código de máquina, enquanto o Python interpreta cada operação e trata cada número como um
+objeto; porque as threads do C++ rodam de verdade ao mesmo tempo (sem GIL); e porque a versão em C++ reaproveita a
+memória em vez de alocar vetores novos a cada nó (seção 6.3.3).
+
+**Como o Python conversa com o C++?**
+O C++ é compilado como uma biblioteca (`.dll` no Windows, `.so` no Linux) que exporta uma função em C. O Python a
+carrega com `ctypes`, da biblioteca padrão, converte o tabuleiro num vetor de bytes e recebe a jogada, o valor, os nós
+e as podas por ponteiros.
 
 **O Azul sempre ganha?**
 Não. O Minimax garante a melhor jogada **dentro do que ele enxerga** e com a heurística que tem. Num labirinto
@@ -792,3 +883,6 @@ resultado vem das decisões, e não da sorte do sorteio.
 7. Use **Reiniciar** com profundidades diferentes para mostrar que enxergar mais longe muda o resultado.
 8. Coloque o Azul na profundidade 5, jogue uma rodada e abra a árvore: os filhos da raiz aparecem sem poda, porque
    foram calculados em paralelo (seção 6.2).
+9. Coloque o Azul na profundidade 8 e jogue uma rodada sem o **Turbo** (vários segundos). Clique em **Reiniciar**,
+   ligue o **Turbo** e jogue a mesma rodada (menos de meio segundo). Na tabela da última decisão: mesma jogada, mesmo
+   valor, mesmos nós, e o selo "C++" no tempo.

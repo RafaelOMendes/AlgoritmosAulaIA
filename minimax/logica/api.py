@@ -6,6 +6,7 @@ from .estrategias import ESTRATEGIAS, ConfiguracaoDoAgente, DecisaoDoAgente
 from .jogo import JOGADORES, Estado, criar_estado_inicial, jogo_terminou, vencedor_do_jogo
 from .labirinto import TAMANHO_MINIMO_DO_LABIRINTO, gerar_labirinto
 from .minimax import VALOR_DE_EMPATE, VALOR_DE_VITORIA, NoDaArvore
+from .minimax_cpp_wrapper import motivo_da_biblioteca_cpp_indisponivel
 from .partida import (
     PassoDoCaminho,
     criar_gerador_da_rodada,
@@ -82,6 +83,7 @@ def decisao_para_json(decisao: DecisaoDoAgente) -> dict:
         "nosVisitados": decisao.nos_visitados,
         "ramosPodados": decisao.ramos_podados,
         "tempoEmMilissegundos": decisao.tempo_em_milissegundos,
+        "motor": decisao.motor,
     }
 
 
@@ -119,14 +121,20 @@ def configuracao_do_agente_de_json(dados: dict) -> ConfiguracaoDoAgente:
         PROFUNDIDADE_MINIMA <= profundidade <= PROFUNDIDADE_MAXIMA,
         f"A profundidade deve ficar entre {PROFUNDIDADE_MINIMA} e {PROFUNDIDADE_MAXIMA}.",
     )
+    usar_turbo = bool(dados.get("usarTurbo", False)) and estrategia == "minimax"
+    if usar_turbo:
+        motivo = motivo_da_biblioteca_cpp_indisponivel()
+        _exigir(motivo is None, f"O modo turbo não está disponível: {motivo}")
     return ConfiguracaoDoAgente(
         estrategia=estrategia,
         profundidade_em_rodadas=profundidade,
         usar_poda_alfa_beta=bool(dados.get("usarPodaAlfaBeta", True)),
+        usar_turbo=usar_turbo,
     )
 
 
 def obter_configuracao(dados: dict) -> dict:
+    motivo_do_turbo_indisponivel = motivo_da_biblioteca_cpp_indisponivel()
     return {
         "estrategias": [
             {"chave": chave, "nome": estrategia.nome, "usaProfundidade": estrategia.usa_profundidade}
@@ -137,6 +145,8 @@ def obter_configuracao(dados: dict) -> dict:
         "valorDeEmpate": VALOR_DE_EMPATE,
         "profundidadeMinima": PROFUNDIDADE_MINIMA,
         "profundidadeMaxima": PROFUNDIDADE_MAXIMA,
+        "turboDisponivel": motivo_do_turbo_indisponivel is None,
+        "motivoDoTurboIndisponivel": motivo_do_turbo_indisponivel,
     }
 
 
@@ -190,6 +200,7 @@ def montar_arvore_de_decisao(dados: dict) -> dict:
         "jogadorMaximizador": busca.jogador_maximizador,
         "profundidadeEmRodadas": busca.profundidade_em_rodadas,
         "usarPodaAlfaBeta": busca.usar_poda_alfa_beta,
+        "usarTurbo": configuracao.usar_turbo,
         "movimento": busca.movimento,
         "valor": busca.valor,
         "nosVisitados": busca.nos_visitados,

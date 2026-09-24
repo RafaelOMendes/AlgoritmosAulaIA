@@ -1,6 +1,7 @@
 import json
 import random
 import unittest
+from unittest import mock
 
 from logica.api import PROFUNDIDADE_MAXIMA_DA_ARVORE, ROTAS_DA_API, ErroDeRequisicao
 from logica.estrategias import ConfiguracaoDoAgente, decidir_movimento
@@ -216,6 +217,20 @@ class TestesDaApi(unittest.TestCase):
             ROTAS_DA_API["/api/arvore"](
                 {"estado": partida["estado"], "jogador": "azul", "configuracaoDoAgente": configuracao_profunda_demais}
             )
+
+    def test_recusa_o_turbo_com_uma_mensagem_clara_quando_o_cpp_nao_esta_disponivel(self):
+        partida = ROTAS_DA_API["/api/nova-partida"]({"tamanho": 13, "semente": 7})
+        configuracao_com_turbo = {"estrategia": "minimax", "profundidadeEmRodadas": 2, "usarTurbo": True}
+        with mock.patch("logica.api.motivo_da_biblioteca_cpp_indisponivel", return_value="biblioteca ausente"):
+            self.assertFalse(ROTAS_DA_API["/api/configuracao"]({})["turboDisponivel"])
+            with self.assertRaisesRegex(ErroDeRequisicao, "biblioteca ausente"):
+                ROTAS_DA_API["/api/jogar-rodada"](
+                    {
+                        "estado": partida["estado"],
+                        "configuracaoDosAgentes": {"azul": configuracao_com_turbo, "laranja": configuracao_com_turbo},
+                        "semente": 7,
+                    }
+                )
 
     def test_mesma_semente_gera_o_mesmo_labirinto_pela_api(self):
         primeira = ROTAS_DA_API["/api/nova-partida"]({"tamanho": 17, "semente": 99})
