@@ -4,6 +4,10 @@ Duas motos de luz andam num labirinto quadrado deixando um rastro sólido. Quem 
 rastro ou no rastro do oponente perde. O agente **Azul** decide cada movimento com o algoritmo **Minimax**
 (com poda alfa-beta opcional), tentando **maximizar o próprio espaço e minimizar o espaço do oponente**.
 
+O **algoritmo roda em Python**: o Minimax, as regras do jogo, a geração do labirinto e a função de avaliação ficam
+na pasta `logica/`. Um pequeno servidor em Python (`servidor.py`) entrega a página web e responde aos pedidos dela.
+O JavaScript só desenha a tela e envia os cliques.
+
 A interface web permite:
 
 - gerar um **labirinto aleatório** a cada reset;
@@ -14,10 +18,9 @@ A interface web permite:
 
 ## Requisitos
 
+- **Python 3.10 ou superior** (testado no Python 3.14)
 - Um navegador moderno (Chrome, Edge ou Firefox)
-- **Node.js 18 ou superior** para o servidor local e os testes (testado no Node 24)
-  - Alternativa sem Node: Python 3 (só para servir os arquivos)
-- Nenhuma dependência para instalar: não precisa de `npm install`
+- Nenhuma biblioteca para instalar: só a biblioteca padrão do Python
 
 ## Como rodar
 
@@ -27,28 +30,24 @@ A interface web permite:
    cd minimax
    ```
 
-2. Inicie o servidor local:
+2. Inicie o servidor:
 
    ```bash
-   npm start
+   python servidor.py
    ```
 
-3. Abra no navegador o endereço que aparece no terminal: **http://localhost:8000**
+3. Abra no navegador: **http://localhost:8000**
 
 Para usar outra porta (por exemplo, se a 8000 estiver ocupada):
 
 ```bash
-node servidor.js 8080
+python servidor.py 8080
 ```
 
-Sem Node.js, dá para servir a pasta com o Python:
-
-```bash
-python -m http.server 8000
-```
-
-> **Importante:** abrir o `index.html` com dois cliques não funciona, porque o navegador bloqueia módulos
-> JavaScript em arquivos locais (`file://`). A própria página mostra um aviso se isso acontecer.
+> **Importante:** a página precisa do servidor Python, porque é ele que calcula as jogadas. Abrir o `index.html`
+> com dois cliques ou com outro servidor de arquivos não funciona; a própria página mostra um aviso.
+>
+> No Windows, se `python` não for reconhecido, use `py servidor.py`.
 
 ## Como usar
 
@@ -68,6 +67,7 @@ Configurações do painel lateral:
 - **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 5). Cada rodada são 2 níveis da árvore.
 - **Estratégia do Laranja**: Minimax (com profundidade própria), Guloso ou Aleatório.
 - **Usar poda alfa-beta**: liga ou desliga a otimização (o resultado é o mesmo; muda a quantidade de nós visitados).
+  Sem poda e com profundidade 5, cada jogada pode levar alguns segundos.
 - **Mostrar território**: pinta cada célula livre com a cor de quem chega nela primeiro. É exatamente o que a função de avaliação do Minimax mede.
 
 No modal da árvore:
@@ -81,34 +81,35 @@ No modal da árvore:
 Dentro da pasta `minimax`:
 
 ```bash
-npm test
+python -m unittest -v
 ```
 
-São 24 testes (`node --test`) cobrindo a geração do labirinto, as regras do jogo, a função de avaliação, o Minimax, a poda alfa-beta e partidas completas.
+São 27 testes (`unittest`, da biblioteca padrão) cobrindo a geração do labirinto, as regras do jogo, a função de
+avaliação, o Minimax, a poda alfa-beta, partidas completas e a API usada pela página.
 
 ## Estrutura dos arquivos
 
 ```
 minimax/
+├── servidor.py                   Servidor HTTP: entrega a página e responde à API
+├── logica/                       O algoritmo, em Python
+│   ├── tabuleiro.py              Células, direções e vizinhos de cada posição do grid
+│   ├── labirinto.py              Geração aleatória e simétrica do labirinto
+│   ├── jogo.py                   Estado da partida, movimentos e colisões
+│   ├── avaliacao.py              Função de avaliação (território por busca em largura)
+│   ├── minimax.py                Minimax com poda alfa-beta e registro da árvore
+│   ├── estrategias.py            Agentes: Minimax, Guloso e Aleatório
+│   ├── partida.py                Rodadas, simulação de partidas e reconstrução da árvore
+│   └── api.py                    Converte pedidos e respostas da página para JSON
+├── testes/                       Testes automatizados (unittest)
 ├── index.html                    Estrutura da página e do modal da árvore
 ├── estilos.css                   Visual (tema escuro estilo Tron)
-├── servidor.js                   Servidor local sem dependências (npm start)
-├── package.json                  Scripts start e test
-├── js/
-│   ├── logica/                   Regras e algoritmo (não dependem do navegador)
-│   │   ├── aleatorio.js          Gerador de números aleatórios com semente
-│   │   ├── tabuleiro.js          Células, direções e coordenadas do grid
-│   │   ├── labirinto.js          Geração aleatória e simétrica do labirinto
-│   │   ├── jogo.js               Estado da partida, movimentos e colisões
-│   │   ├── avaliacao.js          Função de avaliação (território por BFS)
-│   │   ├── minimax.js            Minimax com poda alfa-beta e registro da árvore
-│   │   ├── estrategias.js        Agentes: Minimax, Guloso e Aleatório
-│   │   └── partida.js            Controle da partida e histórico das rodadas
-│   └── interface/                Tudo o que mexe na tela
-│       ├── aplicacao.js          Botões, velocidade, placar e acompanhamento
-│       ├── desenho-do-tabuleiro.js  Desenho do labirinto no canvas
-│       ├── arvore-de-decisao.js  Modal com a árvore de decisão em SVG
-│       └── formatacao.js         Formatação de números, valores e movimentos
-├── testes/                       Testes automatizados (node --test)
+├── js/interface/                 Só a tela (não calcula nenhuma jogada)
+│   ├── aplicacao.js              Botões, velocidade, placar e acompanhamento
+│   ├── api.js                    Envia os pedidos ao servidor Python
+│   ├── desenho-do-tabuleiro.js   Desenho do labirinto no canvas
+│   ├── arvore-de-decisao.js      Modal com a árvore de decisão em SVG
+│   ├── formatacao.js             Formatação de números, valores e movimentos
+│   └── tabuleiro.js              Constantes e coordenadas usadas no desenho
 └── EXPLICACAO.md                 Explicação detalhada do Minimax e de cada parte do código
 ```

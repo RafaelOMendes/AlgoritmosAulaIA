@@ -14,6 +14,15 @@ Não existe "comer peça" nem "dar xeque". O objetivo é **sobreviver mais tempo
 significa garantir para si a maior área livre possível (o "espaço vital") e deixar o oponente confinado numa área
 menor, para que ele fique sem saída antes.
 
+### 1.1 Como o projeto está organizado
+
+- **Python (pasta `logica/`)**: todo o algoritmo. O Minimax, a poda alfa-beta, a função de avaliação, as regras do
+  jogo, a geração do labirinto e os agentes de comparação.
+- **Servidor (`servidor.py`)**: um servidor HTTP da biblioteca padrão do Python que entrega a página e responde aos
+  pedidos dela em JSON (nova partida, próxima rodada, árvore de decisão e tabuleiro de um nó da árvore).
+- **Navegador (`index.html`, `estilos.css` e `js/interface/`)**: só a interface. Desenha o tabuleiro e a árvore,
+  controla a velocidade e os botões, e pede ao Python cada jogada. Nenhuma decisão é calculada em JavaScript.
+
 ## 2. Como o Minimax foi usado
 
 ### 2.1 Os papéis MAX e MIN
@@ -73,11 +82,15 @@ só aceita empatar para escapar de uma derrota certa. Nas mesmas 30 partidas de 
 Na maioria das vezes a busca termina antes do fim do jogo (no limite de profundidade). Nesses nós, chamados
 **folhas**, a posição é avaliada por uma **heurística de território**, inspirada no diagrama de Voronoi:
 
-1. Uma **busca em largura (BFS)** calcula a distância do Azul até cada célula livre.
-2. Outra BFS faz o mesmo para o Laranja.
-3. Cada célula livre pertence a **quem chega nela primeiro**. Se os dois chegam ao mesmo tempo, ela é disputada e
+1. Uma **busca em largura (BFS)** parte das duas cabeças **ao mesmo tempo**, camada por camada: primeiro as
+   células a 1 passo de cada jogador, depois as a 2 passos, e assim por diante.
+2. Cada célula livre pertence a **quem chega nela primeiro**. Se os dois chegam na mesma camada, ela é disputada e
    não conta para ninguém. Células que ninguém alcança também não contam.
-4. **Valor = células do Azul − células do Laranja.**
+3. **Valor = células do Azul − células do Laranja.**
+
+Fazer uma única busca simultânea, em vez de uma busca para cada jogador seguida da comparação das distâncias, deixou
+a avaliação cerca de duas vezes mais rápida em Python. Um dos testes automatizados confere, em centenas de posições,
+que as duas formas dão exatamente o mesmo resultado.
 
 Esse número traduz o raciocínio do enunciado: *"se eu virar à direita, fico com uma área de 10 blocos; se virar à
 esquerda, deixo o inimigo confinado em 5 blocos"*. Quando os dois ficam separados por rastros, a heurística vira
@@ -126,15 +139,19 @@ podem mudar a decisão. A busca carrega dois limites:
 Quando **α ≥ β**, um dos jogadores já tem uma alternativa melhor em outro ponto da árvore e nunca deixaria o jogo
 chegar ali, então os irmãos restantes são descartados (**podados**).
 
-Números medidos na posição inicial de um labirinto 17 × 17:
+Números medidos em Python na posição inicial de um labirinto 17 × 17 (semente 7). Nos cinco casos, o Minimax puro
+e a versão com poda escolheram a mesma jogada, com o mesmo valor:
 
 | Profundidade | Nós (Minimax puro) | Nós (alfa-beta) | Redução | Tempo puro | Tempo alfa-beta |
 |---|---|---|---|---|---|
-| 1 rodada | 21 | 15 | 29% | 4 ms | 1 ms |
-| 2 rodadas | 213 | 96 | 55% | 16 ms | 4 ms |
-| 3 rodadas | 1.621 | 431 | 73% | 58 ms | 12 ms |
-| 4 rodadas | 10.014 | 1.609 | 84% | 315 ms | 40 ms |
-| 5 rodadas | 51.588 | 4.740 | 91% | 1.523 ms | 110 ms |
+| 1 rodada | 21 | 15 | 29% | 2 ms | 1 ms |
+| 2 rodadas | 213 | 107 | 50% | 12 ms | 5 ms |
+| 3 rodadas | 1.858 | 711 | 62% | 103 ms | 35 ms |
+| 4 rodadas | 10.482 | 3.315 | 68% | 512 ms | 149 ms |
+| 5 rodadas | 61.212 | 14.462 | 76% | 3.057 ms | 640 ms |
+
+Quanto mais profunda a árvore, maior a economia. Sem a poda, a profundidade 5 levaria cerca de 3 segundos por
+jogada, o que travaria a animação.
 
 Com a poda, alguns valores da árvore deixam de ser exatos e passam a ser **limites**: `≤ 12` quer dizer "no máximo
 12, e isso já basta para descartar este ramo"; `≥ 12` quer dizer "pelo menos 12". O modal da árvore mostra esses
@@ -142,16 +159,19 @@ símbolos e os ramos podados tracejados. Os valores do caminho escolhido são se
 
 ### 2.8 Como o Minimax entra em cada rodada da partida
 
-A cada rodada:
+A cada rodada, o navegador envia ao servidor Python a situação atual do jogo e a configuração dos agentes
+(rota `/api/jogar-rodada`). O Python então:
 
-1. O Azul roda o Minimax **a partir da situação atual** e pega a direção de maior valor.
+1. Roda o Minimax do Azul **a partir da situação atual** e pega a direção de maior valor.
 2. O Laranja escolhe a jogada dele com a estratégia configurada. Se for Minimax, ele roda a **mesma função** com os
    papéis trocados: para ele, o Laranja é o MAX e o Azul é o MIN.
-3. As duas jogadas são aplicadas juntas e a partida avança.
+3. Aplica as duas jogadas juntas e devolve o novo estado, as decisões (jogada, valor, nós visitados, podas e
+   tempo), a causa de uma eventual batida e o território de cada um.
 
-A árvore não é guardada durante a partida (seria muita memória). Quando o usuário abre o modal, o programa refaz a
-busca para aquela rodada com a opção `registrarArvore` ligada. Como a busca é determinística, a árvore mostrada é
-idêntica à que gerou a decisão.
+A árvore não é guardada durante a partida (seria muita memória). Quando o usuário abre o modal, o navegador pede ao
+Python (rota `/api/arvore`) que refaça a busca daquela rodada com a opção `registrar_arvore` ligada. Como a busca é
+determinística, a árvore mostrada é idêntica à que gerou a decisão. Ao clicar num nó, o navegador pede o tabuleiro
+daquele momento (rota `/api/estado-do-no`), que o Python reconstrói reaplicando as jogadas do caminho.
 
 ## 3. Geração aleatória do labirinto
 
@@ -170,169 +190,176 @@ permite comparar configurações diferentes na mesma situação.
 
 ## 4. O que cada parte do código faz
 
-O código foi dividido em duas camadas. A pasta `js/logica` tem as regras e o algoritmo e não depende do navegador
-(por isso pode ser testada com Node). A pasta `js/interface` cuida do que aparece na tela. Não há comentários no
-código: os nomes das funções e variáveis foram escritos por extenso para explicar o que fazem.
+O algoritmo fica em Python, na pasta `logica/`, e não depende do navegador (por isso é testado com `unittest`). A
+pasta `js/interface/` só cuida da tela. Não há comentários no código: os nomes das funções e variáveis foram escritos
+por extenso para explicar o que fazem.
 
-### 4.1 `js/logica/aleatorio.js`
+### 4.1 `logica/tabuleiro.py`
 
-- **`criarGeradorAleatorio(semente)`**: gerador de números pseudoaleatórios com semente (algoritmo *mulberry32*). A
-  mesma semente sempre gera a mesma sequência, o que torna labirintos e partidas reproduzíveis.
-- **`sortearInteiro`** e **`sortearElemento`**: sorteiam um número num intervalo ou um item de uma lista.
-- **`gerarSementeAleatoria`**: cria uma semente nova para cada labirinto.
+- Constantes das células: **livre**, **parede**, **rastro azul** e **rastro laranja**. O tabuleiro é um `bytearray`
+  de tamanho × tamanho, compacto e rápido de copiar.
+- **`DESLOCAMENTO_DE_CADA_DIRECAO`** e **`ORDEM_DAS_DIRECOES`**: as quatro direções e a ordem em que são testadas.
+- **`indice_da_celula`**, **`linha_do_indice`**, **`coluna_do_indice`**: convertem entre (linha, coluna) e a posição no vetor.
+- **`tabela_de_vizinhos_por_direcao`** e **`tabela_de_vizinhos_dentro_do_tabuleiro`**: calculam uma única vez (com
+  `lru_cache`) os vizinhos de cada célula. A busca consulta essas tabelas em vez de refazer contas a cada nó.
+- **`vizinho_na_direcao`**: a célula vizinha numa direção, ou `FORA_DO_TABULEIRO`.
+- **`indice_espelhado`**: a posição rotacionada em 180°, usada para gerar o labirinto simétrico.
 
-### 4.2 `js/logica/tabuleiro.js`
+### 4.2 `logica/labirinto.py`
 
-- Constantes das células: **livre**, **parede**, **rastro azul** e **rastro laranja**. O tabuleiro é um vetor
-  (`Uint8Array`) de tamanho × tamanho, compacto e rápido de copiar.
-- **`DIRECOES`**: as quatro direções com nome, seta e deslocamento em linha e coluna.
-- **`indiceDaCelula`**, **`linhaDoIndice`**, **`colunaDoIndice`**: convertem entre (linha, coluna) e a posição no vetor.
-- **`vizinhoNaDirecao`**: devolve a célula vizinha numa direção, ou `FORA_DO_TABULEIRO`.
-- **`vizinhosDentroDoTabuleiro`**: os vizinhos válidos de uma célula (usado nas BFS).
-- **`indiceEspelhado`**: a posição rotacionada em 180°, usada para gerar o labirinto simétrico.
+- **`Labirinto`**: tamanho, semente, células e posições iniciais.
+- **`calcular_posicoes_iniciais`**: Azul na linha do meio, perto da borda esquerda; Laranja no ponto espelhado.
+- **`_sortear_paredes_simetricas`**: sorteia os segmentos de parede (com `random.Random(semente)`) e os espelha, sem
+  encostar nas posições iniciais.
+- **`encontrar_celulas_alcancaveis`**: BFS que encontra todas as células livres alcançáveis a partir de uma origem.
+- **`_fechar_bolsoes_isolados`**: confere se os dois jogadores estão conectados e transforma em parede as áreas isoladas.
+- **`gerar_labirinto(tamanho, semente)`**: junta tudo e tenta até 50 sorteios até conseguir um labirinto válido. A
+  mesma semente gera sempre o mesmo labirinto, e é isso que permite o botão **Reiniciar**.
 
-### 4.3 `js/logica/labirinto.js`
+### 4.3 `logica/jogo.py`
 
-- **`calcularPosicoesIniciais`**: Azul na linha do meio, perto da borda esquerda; Laranja no ponto espelhado.
-- **`sortearParedesSimetricas`**: sorteia os segmentos de parede e os espelha, sem encostar nas posições iniciais.
-- **`encontrarCelulasAlcancaveis`**: BFS que marca todas as células livres alcançáveis a partir de uma origem.
-- **`fecharBolsoesIsolados`**: confere se os dois jogadores estão conectados e transforma em parede as áreas isoladas.
-- **`gerarLabirinto(tamanho, semente)`**: junta tudo e tenta até 50 sorteios até conseguir um labirinto válido.
-
-### 4.4 `js/logica/jogo.js`
-
-- **`criarEstadoInicial`**: monta o estado da partida (células, posições, trilhas, quem está vivo, rodada).
-- **`movimentosSeguros`**: direções que levam a uma célula livre.
-- **`movimentosPossiveis`**: os movimentos seguros ou, se não houver nenhum, a direção atual (o agente bate).
-- **`aplicarRodada`**: aplica os dois movimentos **ao mesmo tempo**, detecta batidas e colisão frontal e devolve um
+- **`Estado`**: células, posições, trilhas, quem está vivo, rodada, últimos movimentos e pontos de colisão.
+- **`criar_estado_inicial`**: monta o estado da partida a partir do labirinto.
+- **`movimentos_seguros`**: direções que levam a uma célula livre.
+- **`movimentos_possiveis`**: os movimentos seguros ou, se não houver nenhum, a direção atual (o agente bate).
+- **`aplicar_rodada`**: aplica os dois movimentos **ao mesmo tempo**, detecta batidas e colisão frontal e devolve um
   **estado novo**, sem alterar o anterior. Essa imutabilidade é o que permite ao Minimax explorar vários futuros a
   partir do mesmo estado sem precisar "desfazer" jogadas.
-- **`aplicarRodadaPorPapel`**: mesma coisa, mas recebendo as jogadas como "do maximizador" e "do minimizador". É o
+- **`aplicar_rodada_por_papel`**: mesma coisa, mas recebendo as jogadas como "do maximizador" e "do minimizador". É o
   que permite usar a mesma busca para o Azul e para o Laranja.
-- **`listarTrilha`**: devolve o caminho percorrido por um jogador em ordem. As trilhas são guardadas como lista
-  encadeada (cada passo aponta para o anterior), então acrescentar um passo não copia nada e não pesa na busca.
-- **`jogoTerminou`**, **`vencedorDoJogo`**, **`descreverCausaDaColisao`**: informam se acabou, quem venceu e por que
-  cada um bateu (parede, próprio rastro, rastro do oponente, fora do tabuleiro ou colisão frontal).
+- **`jogo_terminou`**, **`vencedor_do_jogo`**, **`descrever_causa_da_colisao`**: informam se acabou, quem venceu e por
+  que cada um bateu (parede, próprio rastro, rastro do oponente, fora do tabuleiro ou colisão frontal).
 
-### 4.5 `js/logica/avaliacao.js`
+### 4.4 `logica/avaliacao.py`
 
-- **`calcularDistanciasAPartirDe`**: BFS que calcula a distância de uma cabeça até cada célula livre.
-- **`calcularTerritorios`**: roda a BFS para os dois jogadores e decide o dono de cada célula (quem chega primeiro).
-  Devolve a contagem de cada um e o mapa de donos, que também é usado para pintar o território na tela.
-- **`avaliarPosicao(estado, jogadorMaximizador)`**: a **função de avaliação** do Minimax: território do MAX menos
+- **`calcular_territorios`**: a busca em largura simultânea descrita na seção 2.5. Devolve a contagem de cada
+  jogador e o dono de cada célula, que também é usado para pintar o território na tela.
+- **`avaliar_posicao(estado, jogador_maximizador)`**: a **função de avaliação** do Minimax: território do MAX menos
   território do MIN.
-- **`contarEspacoAlcancavel`**: quantas células um jogador alcança (usado pela estratégia gulosa).
+- **`calcular_distancias_a_partir_de`** e **`contar_espaco_alcancavel`**: distâncias a partir de uma célula e
+  quantidade de células alcançáveis (usado pela estratégia gulosa).
 
-### 4.6 `js/logica/minimax.js`: o algoritmo
+### 4.5 `logica/minimax.py`: o algoritmo
 
-- **`buscarMelhorMovimento(estado, jogadorMaximizador, opções)`**: ponto de entrada. Recebe a profundidade em
-  rodadas, se deve usar poda alfa-beta e se deve registrar a árvore. Devolve a melhor jogada, o valor, os nós
+- **`buscar_melhor_movimento(estado, jogador_maximizador, profundidade_em_rodadas, usar_poda_alfa_beta,
+  registrar_arvore)`**: ponto de entrada. Devolve um `ResultadoDaBusca` com a melhor jogada, o valor, os nós
   visitados, os ramos podados, o tempo e, se pedido, a árvore completa.
-- **`valorNoMaximizador`**: o nó MAX (equivale ao `MAX-VALUE` do livro de Russell e Norvig):
-  1. se o jogo acabou, devolve o valor de vitória, derrota ou empate (`avaliarFimDeJogo`);
-  2. se chegou ao limite de profundidade, devolve a avaliação de território (`avaliarPosicao`);
-  3. senão, testa cada movimento do MAX chamando `valorNoMinimizador` e fica com o **maior** valor;
+- **`_valor_no_maximizador`**: o nó MAX (equivale ao `MAX-VALUE` do livro de Russell e Norvig):
+  1. se o jogo acabou, devolve o valor de vitória, derrota ou empate (`_avaliar_fim_de_jogo`);
+  2. se chegou ao limite de profundidade, devolve a avaliação de território (`avaliar_posicao`);
+  3. senão, testa cada movimento do MAX chamando `_valor_no_minimizador` e fica com o **maior** valor;
   4. com poda ligada, atualiza **α** e interrompe o laço quando **α ≥ β**.
-- **`valorNoMinimizador`**: o nó MIN (`MIN-VALUE`). Para cada resposta do MIN, aplica a rodada completa e chama
-  `valorNoMaximizador` com uma rodada a menos. Fica com o **menor** valor e, com poda, atualiza **β** e corta quando
-  **α ≥ β**.
-- **`avaliarFimDeJogo`**: os valores de vitória (1000 + rodadas restantes), derrota e empate (−500).
-- **Registro da árvore** (`criarNoDaArvore`, `criarNoFilho`, `registrarRamosPodados`, `concluirNoInterno`,
-  `classificarValor`): quando `registrarArvore` está ligado, cada nó guarda tipo (MAX/MIN), jogada, caminho desde a
-  raiz, janela alfa-beta na entrada, valor, se o valor é exato ou um limite (≤ / ≥), qual filho foi o melhor, se
-  foi podado e, nas folhas, a avaliação de território. Sem essa opção, nada é registrado e a busca fica mais leve.
-- **`obterCaminhoPrincipal`**: segue o melhor filho de cada nó a partir da raiz. É a sequência de jogadas que o
+- **`_valor_no_minimizador`**: o nó MIN (`MIN-VALUE`). Para cada resposta do MIN, aplica a rodada completa e chama
+  `_valor_no_maximizador` com uma rodada a menos. Fica com o **menor** valor e, com poda, atualiza **β** e corta
+  quando **α ≥ β**.
+- **`_avaliar_fim_de_jogo`**: os valores de vitória (1000 + rodadas restantes), derrota e empate (−500).
+- **Registro da árvore** (`NoDaArvore`, `_criar_no_filho`, `_registrar_ramos_podados`, `_concluir_no_interno`,
+  `_classificar_valor`): quando `registrar_arvore` está ligado, cada nó guarda tipo (MAX/MIN), jogada, janela
+  alfa-beta na entrada, valor, se o valor é exato ou um limite (≤ / ≥), qual filho foi o melhor, se foi podado e, nas
+  folhas, a avaliação de território. Sem essa opção nada é registrado e a busca fica mais leve.
+- **`obter_caminho_principal`**: segue o melhor filho de cada nó a partir da raiz. É a sequência de jogadas que o
   Minimax espera que aconteça (em dourado no modal).
-- **`valorIndicaVitoria`**, **`valorIndicaDerrota`**, **`valorIndicaEmpate`**: identificam valores de fim de jogo para exibição.
 
-### 4.7 `js/logica/estrategias.js`
+### 4.6 `logica/estrategias.py`
 
-- **Minimax** (`decidirComMinimax`): chama `buscarMelhorMovimento` com a profundidade configurada.
-- **Guloso** (`decidirComEstrategiaGulosa`): escolhe a direção que deixa mais células alcançáveis logo em seguida,
-  sem pensar no oponente. Serve de comparação.
-- **Aleatório** (`decidirAleatoriamente`): sorteia entre as direções seguras.
-- **`decidirMovimento`**: chama a estratégia configurada para o agente.
+- **`ConfiguracaoDoAgente`** e **`DecisaoDoAgente`**: o que cada agente recebe (estratégia, profundidade, poda) e o
+  que devolve (jogada e estatísticas).
+- **Minimax** (`_decidir_com_minimax`): chama `buscar_melhor_movimento` com a profundidade configurada.
+- **Guloso** (`_decidir_com_estrategia_gulosa`): escolhe a direção que deixa mais células alcançáveis logo em
+  seguida, sem pensar no oponente. Serve de comparação.
+- **Aleatório** (`_decidir_aleatoriamente`): sorteia entre as direções seguras.
+- **`ESTRATEGIAS`** e **`decidir_movimento`**: a lista de estratégias e a função que chama a estratégia configurada.
 
-### 4.8 `js/logica/partida.js`
+### 4.7 `logica/partida.py`
 
-- **`iniciarPartida`** e **`reiniciarPartidaNoMesmoLabirinto`**: criam a partida (labirinto, estado inicial, histórico vazio).
-- **`jogarProximaRodada`**: pede a decisão dos dois agentes **sobre o mesmo estado**, aplica a rodada e guarda um
-  registro com o estado antes e depois, as decisões e a configuração usada.
-- **`reconstruirArvoreDeDecisao`**: refaz a busca de uma rodada com o registro da árvore ligado, para o modal.
+- **`jogar_rodada`**: pede a decisão dos dois agentes **sobre o mesmo estado**, aplica a rodada e devolve um
+  `RegistroDaRodada` com o estado antes e depois, as decisões e as causas das batidas.
+- **`criar_gerador_da_rodada`**: gera números aleatórios a partir da semente da partida e do número da rodada, para
+  o agente aleatório ser reproduzível mesmo com o servidor sem guardar nada entre um pedido e outro.
+- **`simular_partida_completa`**: joga uma partida inteira sem interface (usada nos testes e nas medições da seção 5).
+- **`reconstruir_arvore_de_decisao`** e **`reconstruir_estado_do_no`**: refazem a busca com a árvore registrada e o
+  tabuleiro de um nó da árvore, para o modal.
 
-### 4.9 `js/interface/aplicacao.js`
+### 4.8 `logica/api.py`
 
-É o controlador da página:
+A ponte entre o Python e o navegador:
 
-- lê a configuração da tela (`lerConfiguracaoDosAgentes`);
-- **Resolver/Pausar** (`resolver`, `pausar`, `agendarProximoPasso`): executa uma rodada e agenda a próxima com
-  `setTimeout`. O intervalo é `1000 / passos por segundo`, então mexer na velocidade vale já para o passo seguinte;
-- **Próximo passo** (`executarUmPasso`), **Reiniciar** e **Resetar** (`comecarComNovoLabirinto`);
-- atualiza tabuleiro, placar de território, resultado final, tabela da última decisão e a lista de acompanhamento
-  (`atualizarTela`, `criarItemDoHistorico`);
-- abre o modal da árvore para a última rodada, para a próxima jogada ou para qualquer rodada do acompanhamento;
-- atalhos de teclado: `Espaço`, `→` e `A`.
+- **`estado_para_json`** / **`estado_de_json`**, **`territorios_para_json`**, **`decisao_para_json`** e
+  **`no_para_json`**: convertem os objetos Python para JSON e de volta. Os valores ±∞ de α e β viram `null`, porque
+  JSON não aceita infinito.
+- **`configuracao_do_agente_de_json`**: valida a estratégia e a profundidade (1 a 5) recebidas da página.
+- **Rotas** (`ROTAS_DA_API`): `/api/configuracao` (estratégias e constantes do jogo), `/api/nova-partida`,
+  `/api/jogar-rodada`, `/api/arvore` e `/api/estado-do-no`.
+- O servidor não guarda o estado da partida: a página envia o estado atual em cada pedido e recebe o próximo.
 
-### 4.10 `js/interface/desenho-do-tabuleiro.js`
+### 4.9 `servidor.py`
 
-Desenha o estado no `<canvas>`: fundo e grade, território (se ligado), paredes, células ocupadas, as **trilhas de
-luz** (linha contínua com brilho), as cabeças, o movimento pendente (tracejado, usado na prévia dos nós MIN) e um X
-vermelho onde houve batida. As cores vêm das variáveis do CSS e o desenho se ajusta à densidade de pixels da tela.
+- **`ManipuladorDeRequisicoes`**: estende o `SimpleHTTPRequestHandler` da biblioteca padrão. Entrega os arquivos da
+  página e trata os `POST` da API, respondendo com erro 400 e uma mensagem clara quando o pedido é inválido.
+- Dois ajustes deixaram cada pedido cerca de 100 vezes mais rápido no Windows (de 60–250 ms para 2–3 ms):
+  **`TCP_NODELAY`** com conexões persistentes (HTTP/1.1), para o sistema não segurar a resposta esperando mais
+  dados, e escutar também no endereço IPv6 local (`::1`), que é o primeiro que o navegador tenta ao abrir
+  `localhost`. Os dois endereços são locais (`127.0.0.1` e `::1`), então a página não fica acessível pela rede.
+- **`escolher_porta`**: usa a porta passada na linha de comando (padrão 8000).
 
-### 4.11 `js/interface/arvore-de-decisao.js`
+### 4.10 `js/interface/` (só a tela)
 
-O modal da árvore de decisão:
+- **`aplicacao.js`**: controlador da página. Lê a configuração, pede cada rodada ao Python (`/api/jogar-rodada`),
+  controla **Resolver/Pausar**, **Próximo passo**, **Reiniciar** e **Resetar**, a **velocidade** (espera o tempo que
+  falta para completar o intervalo `1000 / passos por segundo` depois de cada resposta), o placar, o resultado final,
+  a tabela da última decisão, a lista de acompanhamento e os atalhos de teclado.
+- **`api.js`**: envia os pedidos ao servidor e transforma respostas de erro em mensagens na tela.
+- **`desenho-do-tabuleiro.js`**: desenha o estado no `<canvas>`: grade, território, paredes, as **trilhas de luz**,
+  as cabeças, o movimento pendente (tracejado, na prévia dos nós MIN) e um X vermelho onde houve batida.
+- **`arvore-de-decisao.js`**: o modal da árvore. Posiciona os nós visíveis (`calcularLayout`), desenha em SVG (MAX
+  como retângulo, MIN como pílula, caminho escolhido em dourado, ramos podados tracejados), expande e recolhe ramos,
+  dá zoom e explica o nó selecionado (`montarDescricaoDoNo`), buscando no Python o tabuleiro daquele nó.
+- **`formatacao.js`** e **`tabuleiro.js`**: formatação de números e valores ("vitória", "empate", "+12"), setas das
+  jogadas e as constantes usadas no desenho.
+- **`index.html`** e **`estilos.css`**: estrutura da página e tema escuro estilo Tron, com layout que funciona também
+  no celular.
 
-- **`calcularLayout`**: posiciona só os nós visíveis. Cada folha visível ganha uma coluna e cada pai fica centralizado
-  sobre os filhos.
-- **`criarElementoDoNo`** e **`criarAresta`**: desenham em SVG os nós (retângulo para MAX, pílula para MIN, com
-  jogada, valor e tipo) e as ligações. O caminho escolhido fica em dourado e os ramos podados ficam tracejados.
-- **Interação**: clicar num nó mostra ou esconde os filhos e mantém o nó parado na tela; há botões para expandir o
-  caminho escolhido, expandir um nível, recolher tudo e dar zoom. Existe um limite de 800 nós visíveis para a página
-  não travar.
-- **`reconstruirEstadoDoNo`**: reaplica as jogadas do caminho desde a raiz para mostrar o tabuleiro daquele nó.
-- **`montarDescricaoDoNo`**: explica o nó selecionado (quem joga, valor, por que aquele filho foi escolhido, conta
-  da heurística nas folhas, significado de ≤/≥, janela α/β e o motivo das podas).
+### 4.11 `testes/`
 
-### 4.12 `js/interface/formatacao.js`, `index.html`, `estilos.css` e `servidor.js`
-
-- **`formatacao.js`**: números no padrão brasileiro, valores do Minimax ("vitória", "empate", "derrota", "+12"),
-  setas das jogadas e descrição da profundidade.
-- **`index.html`**: estrutura da página, controles, painel lateral e o `<dialog>` da árvore.
-- **`estilos.css`**: tema escuro no estilo Tron, layout responsivo (funciona também no celular) e estilos dos nós da árvore.
-- **`servidor.js`**: servidor HTTP mínimo em Node, sem dependências, que serve os arquivos da pasta e bloqueia o
-  acesso a arquivos fora dela.
-
-### 4.13 `testes/`
-
-24 testes com `node --test`:
+27 testes com `unittest`:
 
 - **Labirinto**: mesma semente gera o mesmo labirinto; sementes diferentes geram labirintos diferentes; o labirinto é
   simétrico; todas as células livres são alcançáveis.
 - **Regras**: movimentos seguros, colisão frontal, causa de cada batida, imutabilidade do estado, ordem das trilhas.
-- **Avaliação**: dono de cada célula e troca de sinal conforme o ponto de vista.
+- **Avaliação**: dono de cada célula, troca de sinal conforme o ponto de vista e equivalência da busca simultânea
+  com a comparação das distâncias de cada jogador.
 - **Minimax**: evita o beco sem saída; enxerga a derrota com 2 rodadas; só reconhece a vitória quando ela está
   dentro da profundidade; empate inevitável vale −500; **a poda alfa-beta dá o mesmo valor e a mesma jogada que o
   Minimax puro** em dezenas de posições; a árvore registrada bate com as estatísticas da busca.
-- **Partidas**: sempre terminam com um resultado válido, e o Minimax mais profundo vence o mais raso na maioria dos labirintos.
+- **Partidas e API**: partidas sempre terminam com um resultado válido; o Minimax mais profundo vence o mais raso na
+  maioria dos labirintos; as respostas da API são JSON válido.
 
 ## 5. Resultados
 
-Partidas automáticas em 30 labirintos 17 × 17 diferentes:
+Partidas automáticas em labirintos 17 × 17 diferentes, com a versão em Python. Cada confronto foi jogado dos dois
+lados, para descontar qualquer vantagem de posição:
 
-| Azul | Laranja | Vitórias do Azul | Vitórias do Laranja | Empates |
-|---|---|---|---|---|
-| Minimax, 4 rodadas | Minimax, 1 rodada | 25 | 5 | 0 |
-| Minimax, 4 rodadas | Minimax, 2 rodadas | 18 | 12 | 0 |
-| Minimax, 4 rodadas | Guloso | 26 | 4 | 0 |
-| Minimax, 3 rodadas | Minimax, 3 rodadas | 14 | 13 | 3 |
-| Minimax, 1 rodada | Minimax, 4 rodadas | 8 | 22 | 0 |
+| Azul | Laranja | Labirintos | Vitórias do Azul | Vitórias do Laranja | Empates |
+|---|---|---|---|---|---|
+| Minimax, 3 rodadas | Minimax, 1 rodada | 60 | 47 | 11 | 2 |
+| Minimax, 1 rodada | Minimax, 3 rodadas | 60 | 6 | 52 | 2 |
+| Minimax, 4 rodadas | Minimax, 2 rodadas | 60 | 33 | 24 | 3 |
+| Minimax, 2 rodadas | Minimax, 4 rodadas | 60 | 17 | 41 | 2 |
+| Minimax, 4 rodadas | Minimax, 1 rodada | 20 | 16 | 4 | 0 |
+| Minimax, 1 rodada | Minimax, 4 rodadas | 20 | 6 | 14 | 0 |
+| Minimax, 4 rodadas | Guloso | 20 | 19 | 1 | 0 |
+| Minimax, 3 rodadas | Minimax, 3 rodadas | 20 | 10 | 10 | 0 |
 
-- Enxergar mais longe faz diferença: profundidade 4 contra 1 vence 83% das partidas.
-- Com as profundidades trocadas, o resultado também se inverte, então o que decide é o algoritmo, não o lado do tabuleiro.
-- Com profundidades iguais o jogo fica equilibrado, como esperado num labirinto simétrico.
-- No computador usado nos testes, cada rodada com profundidade 4 e poda levou no máximo cerca de 100 ms, então a
-  animação roda sem travar.
+- **Enxergar mais longe faz diferença**: somando os dois lados, profundidade 3 contra 1 venceu 99 de 120 partidas
+  (83%), e profundidade 4 contra 1 venceu 30 de 40 (75%).
+- **A vantagem diminui quando o adversário também enxerga longe**: profundidade 4 contra 2 venceu 74 de 120 (62%).
+- **Contra o agente guloso**, que não considera o oponente, o Minimax venceu 19 de 20.
+- **Com profundidades iguais** o jogo fica equilibrado (10 × 10), como esperado num labirinto simétrico.
+- **Cuidado com amostras pequenas**: numa primeira rodada de 20 partidas, a profundidade 4 perdeu para a 2 (7 × 12).
+  Com 60 partidas de cada lado, o resultado se inverteu. Vinte partidas eram poucas para tirar conclusões.
+- **Desempenho**: em Python, uma decisão com profundidade 4 e poda leva cerca de 150 ms no início da partida e bem
+  menos depois, quando sobra menos espaço livre. Na velocidade máxima, a página chegou a cerca de 29 rodadas por
+  segundo.
 
 ## 6. Decisões de projeto e limitações
 
@@ -344,6 +371,11 @@ Partidas automáticas em 30 labirintos 17 × 17 diferentes:
   primeiro as jogadas mais promissoras aumentaria o número de podas.
 - **Adversário pessimista**: supor que o oponente vê a jogada antes de responder deixa o agente mais cauteloso do
   que o necessário contra adversários fracos, mas é o que garante a segurança da decisão.
+- **Python no servidor, interface no navegador**: o algoritmo ficou em Python e a tela em HTML/JavaScript, ligados
+  por uma API JSON simples. O servidor não guarda estado, o que facilita os testes e permite abrir várias abas ao
+  mesmo tempo. O custo é enviar o tabuleiro em cada pedido, algo pequeno (menos de 1.000 números).
+- **Velocidade do Python**: Python é mais lento que JavaScript para esse tipo de laço. Por isso a avaliação usa uma
+  única busca em largura e tabelas de vizinhos pré-calculadas. Sem poda, a profundidade 5 leva segundos por jogada.
 
 ## 7. Roteiro sugerido para a apresentação
 

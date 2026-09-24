@@ -12,7 +12,7 @@ from logica.api import ROTAS_DA_API, ErroDeRequisicao
 
 PASTA_DO_PROJETO = Path(__file__).resolve().parent
 PORTA_PADRAO = 8000
-NOME_DO_PROJETO = "Fuga no Labirinto (Minimax)"
+NOME_DO_PROJETO = "Caixeiro Viajante (algoritmo genético)"
 
 
 class ManipuladorDeRequisicoes(SimpleHTTPRequestHandler):

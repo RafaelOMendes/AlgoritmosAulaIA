@@ -12,10 +12,10 @@ function desenharSequencia(rota, classeDaPosicao = () => '') {
 }
 
 function desenharTorneio(torneio) {
-  const participantes = torneio.participantes
-    .map((participante) => {
-      const classe = participante === torneio.vencedor ? 'participante participante-vencedor' : 'participante';
-      return `<span class="${classe}">${formatarQuilometros(participante.distancia)}</span>`;
+  const participantes = torneio.distancias
+    .map((distancia, indice) => {
+      const classe = indice === torneio.indiceDoVencedor ? 'participante participante-vencedor' : 'participante';
+      return `<span class="${classe}">${formatarQuilometros(distancia)}</span>`;
     })
     .join('');
   return `<div class="torneio">${participantes}</div>`;
@@ -46,13 +46,13 @@ export function desenharAnatomiaDaGeracao(elemento, exemplo, configuracao) {
     etapas.push(
       desenharEtapa(
         'Pai A',
-        `${formatarQuilometros(torneioDoPaiA.vencedor.distancia)} · o trecho destacado é copiado`,
-        desenharSequencia(torneioDoPaiA.vencedor.rota, (posicao) => (estaNoTrecho(posicao, cruzamento) ? 'gene-do-pai-a' : '')),
+        `${formatarQuilometros(torneioDoPaiA.distanciaDoVencedor)} · o trecho destacado é copiado`,
+        desenharSequencia(torneioDoPaiA.rotaDoVencedor, (posicao) => (estaNoTrecho(posicao, cruzamento) ? 'gene-do-pai-a' : '')),
       ),
       desenharEtapa(
         'Pai B',
-        `${formatarQuilometros(torneioDoPaiB.vencedor.distancia)} · completa o resto na ordem dele`,
-        desenharSequencia(torneioDoPaiB.vencedor.rota, () => 'gene-do-pai-b'),
+        `${formatarQuilometros(torneioDoPaiB.distanciaDoVencedor)} · completa o resto na ordem dele`,
+        desenharSequencia(torneioDoPaiB.rotaDoVencedor, () => 'gene-do-pai-b'),
       ),
       desenharEtapa(
         'Filho (cruzamento OX)',
@@ -88,7 +88,7 @@ export function desenharAnatomiaDaGeracao(elemento, exemplo, configuracao) {
     );
   }
 
-  const melhorPai = Math.min(torneioDoPaiA.vencedor.distancia, torneioDoPaiB.vencedor.distancia);
+  const melhorPai = Math.min(torneioDoPaiA.distanciaDoVencedor, torneioDoPaiB.distanciaDoVencedor);
   const comparacao = filho.distancia < melhorPai ? 'mais curto que os dois pais' : 'não superou o melhor pai';
   etapas.push(
     desenharEtapa(

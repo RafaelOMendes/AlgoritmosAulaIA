@@ -1,25 +1,15 @@
-import { criarGeradorAleatorio, gerarSementeAleatoria } from '../logica/aleatorio.js';
-import { listarCapitais, sortearCidades } from '../logica/cidades.js';
-import { distanciaEntre } from '../logica/distancias.js';
-import {
-  QUANTIDADE_MINIMA_DE_PONTOS,
-  algoritmoConvergiu,
-  contarRotasDistintas,
-  criarAlgoritmoGenetico,
-  evoluirUmaGeracao,
-  melhorIndividuo,
-} from '../logica/genetico.js';
+import { chamarApi } from './api.js';
 import { desenharAnatomiaDaGeracao, formatarQuilometros } from './anatomia-da-geracao.js';
 import { desenharGraficoDeEvolucao } from './grafico-de-evolucao.js';
 import { criarMapaDaRota } from './mapa-da-rota.js';
 
-const GERACOES_POR_SEGUNDO = [1, 2, 5, 10, 30, 60, 200, 1000];
-const INTERVALO_MINIMO_ENTRE_DESENHOS = 90;
-const TEMPO_MAXIMO_DE_CALCULO_POR_QUADRO = 14;
-const INTERVALO_ENTRE_QUADROS = 16;
+const GERACOES_POR_SEGUNDO = [1, 2, 5, 10, 25, 50, 100, 200];
+const DURACAO_MINIMA_DO_CICLO = 100;
+const QUANTIDADE_MINIMA_DE_PONTOS = 4;
 
 const elementos = Object.fromEntries(
   [
+    'aviso-de-erro',
     'indicador-geracao',
     'indicador-melhor',
     'indicador-media',
@@ -62,11 +52,11 @@ const elementos = Object.fromEntries(
 
 const aplicacao = {
   pontos: [],
-  algoritmo: null,
+  execucao: null,
+  historico: [],
   emExecucao: false,
-  geracoesAcumuladas: 0,
-  instanteDoQuadroAnterior: 0,
-  instanteDoUltimoDesenho: 0,
+  identificadorDoCiclo: 0,
+  aguardandoServidor: false,
 };
 
 const formatadorDeNumeros = new Intl.NumberFormat('pt-BR');
@@ -75,6 +65,15 @@ const mapa = criarMapaDaRota(document.getElementById('mapa'), {
   aoClicarNoMapa: adicionarPonto,
   aoClicarNoPonto: removerPonto,
 });
+
+function esperar(milissegundos) {
+  return new Promise((resolver) => setTimeout(resolver, milissegundos));
+}
+
+function mostrarErro(mensagem) {
+  elementos.avisoDeErro.textContent = mensagem;
+  elementos.avisoDeErro.hidden = !mensagem;
+}
 
 function lerConfiguracao() {
   return {
@@ -89,6 +88,11 @@ function lerConfiguracao() {
 
 function geracoesPorSegundo() {
   return GERACOES_POR_SEGUNDO[Number(elementos.controleVelocidade.value)];
+}
+
+function execucaoConvergiu() {
+  const { execucao } = aplicacao;
+  return Boolean(execucao) && execucao.geracao - execucao.geracaoDaUltimaMelhora >= lerConfiguracao().geracoesSemMelhoraParaParar;
 }
 
 function atualizarRotulos() {
@@ -107,39 +111,39 @@ function atualizarRotulos() {
 }
 
 function descreverEstado() {
-  if (!aplicacao.algoritmo) {
+  if (!aplicacao.execucao) {
     return { texto: `Adicione pelo menos ${QUANTIDADE_MINIMA_DE_PONTOS} pontos`, classe: '' };
   }
-  if (algoritmoConvergiu(aplicacao.algoritmo, lerConfiguracao())) {
-    return { texto: `Convergiu: ${formatadorDeNumeros.format(lerConfiguracao().geracoesSemMelhoraParaParar)} gerações sem melhora`, classe: 'convergiu' };
+  if (execucaoConvergiu()) {
+    return {
+      texto: `Convergiu: ${formatadorDeNumeros.format(lerConfiguracao().geracoesSemMelhoraParaParar)} gerações sem melhora`,
+      classe: 'convergiu',
+    };
   }
   if (aplicacao.emExecucao) {
     return { texto: 'Evoluindo…', classe: 'evoluindo' };
   }
-  return { texto: aplicacao.algoritmo.geracao === 0 ? 'Pronto para evoluir' : 'Pausado', classe: '' };
+  return { texto: aplicacao.execucao.geracao === 0 ? 'Pronto para evoluir' : 'Pausado', classe: '' };
 }
 
 function atualizarBotoes() {
-  const semAlgoritmo = !aplicacao.algoritmo;
-  const convergiu = !semAlgoritmo && algoritmoConvergiu(aplicacao.algoritmo, lerConfiguracao());
+  const semExecucao = !aplicacao.execucao;
+  const convergiu = execucaoConvergiu();
   elementos.botaoEvoluir.textContent = aplicacao.emExecucao ? '⏸ Pausar' : '▶ Evoluir';
   elementos.botaoEvoluir.classList.toggle('em-execucao', aplicacao.emExecucao);
-  elementos.botaoEvoluir.disabled = semAlgoritmo || convergiu;
-  elementos.botaoPasso.disabled = semAlgoritmo || aplicacao.emExecucao || convergiu;
-  elementos.botaoReiniciar.disabled = semAlgoritmo;
+  elementos.botaoEvoluir.disabled = semExecucao || convergiu;
+  elementos.botaoPasso.disabled = semExecucao || aplicacao.emExecucao || convergiu || aplicacao.aguardandoServidor;
+  elementos.botaoReiniciar.disabled = semExecucao;
   const estado = descreverEstado();
   elementos.seloDeEstado.textContent = estado.texto;
   elementos.seloDeEstado.className = `selo-de-estado ${estado.classe}`;
 }
 
-function desenharListaDaRota(individuo) {
-  const { pontos, matrizDeDistancias } = aplicacao.algoritmo;
-  const itens = individuo.rota.map((indiceDoPonto, posicao) => {
-    const proximoPonto = individuo.rota[(posicao + 1) % individuo.rota.length];
-    const ponto = pontos[indiceDoPonto];
+function desenharListaDaRota(melhor) {
+  const itens = melhor.rota.map((indiceDoPonto, posicao) => {
+    const ponto = aplicacao.pontos[indiceDoPonto];
     const nome = ponto.uf ? `${ponto.nome} (${ponto.uf})` : ponto.nome;
-    const trecho = formatarQuilometros(distanciaEntre(matrizDeDistancias, indiceDoPonto, proximoPonto));
-    return `<li>${indiceDoPonto + 1}. ${nome} <span class="distancia-do-trecho">→ ${trecho}</span></li>`;
+    return `<li>${indiceDoPonto + 1}. ${nome} <span class="distancia-do-trecho">→ ${formatarQuilometros(melhor.trechos[posicao])}</span></li>`;
   });
   elementos.listaDaRota.innerHTML = itens.join('');
 }
@@ -164,31 +168,28 @@ function limparPainel() {
 }
 
 function desenharTudo() {
-  aplicacao.instanteDoUltimoDesenho = performance.now();
   atualizarBotoes();
   elementos.resumoDosPontos.textContent = `${aplicacao.pontos.length} pontos no mapa.`;
-  if (!aplicacao.algoritmo) {
+  const { execucao } = aplicacao;
+  if (!execucao) {
     limparPainel();
     return;
   }
-  const { algoritmo } = aplicacao;
-  const melhor = melhorIndividuo(algoritmo);
-  const estatisticasAtuais = algoritmo.historico.at(-1);
-  const distanciaInicial = algoritmo.historico[0].melhor;
+  const estatisticasAtuais = aplicacao.historico.at(-1);
 
-  elementos.indicadorGeracao.textContent = formatadorDeNumeros.format(algoritmo.geracao);
-  elementos.indicadorMelhor.textContent = formatarQuilometros(melhor.distancia);
+  elementos.indicadorGeracao.textContent = formatadorDeNumeros.format(execucao.geracao);
+  elementos.indicadorMelhor.textContent = formatarQuilometros(execucao.melhor.distancia);
   elementos.indicadorMedia.textContent = formatarQuilometros(estatisticasAtuais.media);
-  elementos.indicadorMelhora.textContent = `${Math.round((1 - melhor.distancia / distanciaInicial) * 100)}%`;
+  elementos.indicadorMelhora.textContent = `${Math.round((1 - execucao.melhor.distancia / execucao.distanciaInicial) * 100)}%`;
   elementos.estatisticaPior.textContent = formatarQuilometros(estatisticasAtuais.pior);
-  elementos.estatisticaDiversidade.textContent = `${contarRotasDistintas(algoritmo.populacao)} de ${algoritmo.populacao.length}`;
-  elementos.estatisticaAvaliadas.textContent = formatadorDeNumeros.format(algoritmo.individuosAvaliados);
-  elementos.estatisticaUltimaMelhora.textContent = `geração ${formatadorDeNumeros.format(algoritmo.geracaoDaUltimaMelhora)}`;
+  elementos.estatisticaDiversidade.textContent = `${execucao.rotasDistintas} de ${execucao.tamanhoDaPopulacao}`;
+  elementos.estatisticaAvaliadas.textContent = formatadorDeNumeros.format(execucao.individuosAvaliados);
+  elementos.estatisticaUltimaMelhora.textContent = `geração ${formatadorDeNumeros.format(execucao.geracaoDaUltimaMelhora)}`;
 
-  mapa.mostrarRota(algoritmo.pontos, melhor.rota);
-  desenharListaDaRota(melhor);
-  desenharAnatomiaDaGeracao(elementos.anatomiaDaGeracao, algoritmo.exemploDeReproducao, lerConfiguracao());
-  desenharGraficoDeEvolucao(elementos.graficoEvolucao, algoritmo.historico, {
+  mapa.mostrarRota(aplicacao.pontos, execucao.melhor.rota);
+  desenharListaDaRota(execucao.melhor);
+  desenharAnatomiaDaGeracao(elementos.anatomiaDaGeracao, execucao.exemploDeReproducao, lerConfiguracao());
+  desenharGraficoDeEvolucao(elementos.graficoEvolucao, aplicacao.historico, {
     series: [
       { chave: 'media', variavelDeCor: '--secundaria', espessura: 1.5 },
       { chave: 'melhor', variavelDeCor: '--destaque', espessura: 2.5 },
@@ -197,56 +198,77 @@ function desenharTudo() {
   });
 }
 
-function evoluirSePossivel() {
-  const configuracao = lerConfiguracao();
-  if (!aplicacao.algoritmo || algoritmoConvergiu(aplicacao.algoritmo, configuracao)) {
-    return false;
-  }
-  evoluirUmaGeracao(aplicacao.algoritmo, configuracao);
-  return true;
+function registrarInstantaneo(instantaneo) {
+  aplicacao.execucao = instantaneo;
+  aplicacao.historico.push(...instantaneo.historicoNovo);
 }
 
-function executarQuadro() {
-  if (!aplicacao.emExecucao) {
-    return;
+async function evoluirNoServidor(quantidadeDeGeracoes) {
+  const execucaoAtual = aplicacao.execucao;
+  if (!execucaoAtual || execucaoConvergiu() || aplicacao.aguardandoServidor) {
+    return false;
   }
-  const instante = performance.now();
-  const tempoDecorrido = Math.min(250, instante - aplicacao.instanteDoQuadroAnterior);
-  aplicacao.instanteDoQuadroAnterior = instante;
-  aplicacao.geracoesAcumuladas += (tempoDecorrido * geracoesPorSegundo()) / 1000;
-
-  const limiteDeTempo = performance.now() + TEMPO_MAXIMO_DE_CALCULO_POR_QUADRO;
-  while (aplicacao.geracoesAcumuladas >= 1 && performance.now() < limiteDeTempo) {
-    if (!evoluirSePossivel()) {
-      pausar();
-      break;
+  aplicacao.aguardandoServidor = true;
+  try {
+    const instantaneo = await chamarApi('/api/evoluir', {
+      id: execucaoAtual.id,
+      geracoes: quantidadeDeGeracoes,
+      configuracao: lerConfiguracao(),
+      desdeAGeracao: execucaoAtual.geracao,
+    });
+    if (aplicacao.execucao !== execucaoAtual) {
+      return false;
     }
-    aplicacao.geracoesAcumuladas -= 1;
+    registrarInstantaneo(instantaneo);
+    mostrarErro('');
+    return !instantaneo.convergiu;
+  } catch (erro) {
+    mostrarErro(erro.message);
+    return false;
+  } finally {
+    aplicacao.aguardandoServidor = false;
   }
-  aplicacao.geracoesAcumuladas = Math.min(aplicacao.geracoesAcumuladas, 1);
+}
 
-  if (!aplicacao.emExecucao || performance.now() - aplicacao.instanteDoUltimoDesenho >= INTERVALO_MINIMO_ENTRE_DESENHOS) {
+async function evoluirContinuamente(identificadorDoCiclo) {
+  while (aplicacao.emExecucao && aplicacao.identificadorDoCiclo === identificadorDoCiclo) {
+    const inicio = performance.now();
+    const velocidade = geracoesPorSegundo();
+    const duracaoDoCiclo = Math.max(1000 / velocidade, DURACAO_MINIMA_DO_CICLO);
+    const geracoesNoCiclo = Math.max(1, Math.round((velocidade * duracaoDoCiclo) / 1000));
+    const podeContinuar = await evoluirNoServidor(geracoesNoCiclo);
+    if (aplicacao.identificadorDoCiclo !== identificadorDoCiclo) {
+      return;
+    }
+    if (!podeContinuar) {
+      pausar();
+      return;
+    }
     desenharTudo();
-  }
-  if (aplicacao.emExecucao) {
-    setTimeout(executarQuadro, INTERVALO_ENTRE_QUADROS);
+    const tempoRestante = duracaoDoCiclo - (performance.now() - inicio);
+    if (tempoRestante > 0) {
+      await esperar(tempoRestante);
+    }
   }
 }
 
 function evoluir() {
-  if (!evoluirSePossivel()) {
-    desenharTudo();
+  if (!aplicacao.execucao || execucaoConvergiu()) {
     return;
   }
   aplicacao.emExecucao = true;
-  aplicacao.geracoesAcumuladas = 0;
-  aplicacao.instanteDoQuadroAnterior = performance.now();
+  aplicacao.identificadorDoCiclo += 1;
   desenharTudo();
-  setTimeout(executarQuadro, INTERVALO_ENTRE_QUADROS);
+  evoluirContinuamente(aplicacao.identificadorDoCiclo);
+}
+
+function interromperEvolucao() {
+  aplicacao.emExecucao = false;
+  aplicacao.identificadorDoCiclo += 1;
 }
 
 function pausar() {
-  aplicacao.emExecucao = false;
+  interromperEvolucao();
   desenharTudo();
 }
 
@@ -258,36 +280,52 @@ function alternarExecucao() {
   }
 }
 
-function avancarUmaGeracao() {
-  evoluirSePossivel();
+async function avancarUmaGeracao() {
+  await evoluirNoServidor(1);
   desenharTudo();
 }
 
-function reiniciarAlgoritmo() {
-  aplicacao.emExecucao = false;
-  aplicacao.algoritmo =
-    aplicacao.pontos.length >= QUANTIDADE_MINIMA_DE_PONTOS
-      ? criarAlgoritmoGenetico(aplicacao.pontos, lerConfiguracao(), gerarSementeAleatoria())
-      : null;
+async function reiniciarAlgoritmo() {
+  interromperEvolucao();
+  aplicacao.execucao = null;
+  aplicacao.historico = [];
   mapa.mostrarPontos(aplicacao.pontos);
+  if (aplicacao.pontos.length >= QUANTIDADE_MINIMA_DE_PONTOS) {
+    const pontosEnviados = aplicacao.pontos;
+    try {
+      const instantaneo = await chamarApi('/api/iniciar', { pontos: pontosEnviados, configuracao: lerConfiguracao() });
+      if (aplicacao.pontos === pontosEnviados) {
+        registrarInstantaneo(instantaneo);
+        mostrarErro('');
+      }
+    } catch (erro) {
+      mostrarErro(erro.message);
+    }
+  }
   desenharTudo();
 }
 
-function trocarPontos(novosPontos) {
+async function trocarPontos(novosPontos) {
   aplicacao.pontos = novosPontos;
-  reiniciarAlgoritmo();
+  mapa.mostrarPontos(aplicacao.pontos);
   mapa.enquadrarPontos(aplicacao.pontos);
+  await reiniciarAlgoritmo();
 }
 
-function carregarConjuntoEscolhido() {
+async function carregarConjuntoEscolhido() {
   const conjunto = elementos.selecaoConjunto.value;
-  if (conjunto === 'capitais') {
-    trocarPontos(listarCapitais());
-  } else if (conjunto === 'sorteio') {
-    const quantidade = Number(elementos.quantidadeSorteio.value);
-    trocarPontos(sortearCidades(quantidade, criarGeradorAleatorio(gerarSementeAleatoria())));
-  } else {
-    reiniciarAlgoritmo();
+  try {
+    if (conjunto === 'capitais') {
+      const { pontos } = await chamarApi('/api/capitais');
+      await trocarPontos(pontos);
+    } else if (conjunto === 'sorteio') {
+      const { pontos } = await chamarApi('/api/sortear-cidades', { quantidade: Number(elementos.quantidadeSorteio.value) });
+      await trocarPontos(pontos);
+    } else {
+      await reiniciarAlgoritmo();
+    }
+  } catch (erro) {
+    mostrarErro(erro.message);
   }
 }
 

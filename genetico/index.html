@@ -3,23 +3,31 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Design de Interface · Algoritmo Genético</title>
+    <title>Caixeiro Viajante · Algoritmo Genético</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
     <link rel="stylesheet" href="estilos.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <script type="module" src="js/interface/aplicacao.js"></script>
   </head>
   <body>
     <div id="aviso-arquivo-local" class="aviso" hidden>
-      <strong>Abra pelo servidor local.</strong> Rode <code>npm start</code> dentro da pasta
-      <code>genetico/design-de-interface</code> e acesse <code>http://localhost:8000</code>.
+      <strong>Abra pelo servidor local.</strong> Rode <code>python servidor.py</code> dentro da pasta
+      <code>genetico</code> e acesse <code>http://localhost:8000</code>. É esse servidor que executa o algoritmo
+      genético em Python.
+    </div>
+    <div id="aviso-de-erro" class="aviso" role="alert" hidden></div>
+    <div id="aviso-sem-mapa" class="aviso" hidden>
+      <strong>O mapa não carregou.</strong> Ele precisa de internet para baixar o Leaflet e as imagens do mapa.
     </div>
 
     <header class="cabecalho">
-      <h1>Design de Interface Automático</h1>
-      <p class="subtitulo">
-        Cada indivíduo é o "DNA" de uma tela de celular: cores, tamanho da fonte, altura da linha, tamanho do botão e
-        espaçamentos. Um <strong>algoritmo genético</strong> cria e combina variações, mantendo as que mais pontuam em
-        métricas de <strong>legibilidade e usabilidade</strong>.
-      </p>
+      <div>
+        <h1>Caixeiro Viajante</h1>
+        <p class="subtitulo">
+          Qual a menor rota que passa por todas as cidades e volta ao início? Um <strong>algoritmo genético</strong>
+          evolui uma população de rotas: as mais curtas se reproduzem, se misturam e sofrem mutações.
+        </p>
+      </div>
     </header>
 
     <main class="layout">
@@ -30,45 +38,34 @@
             <strong id="indicador-geracao" class="indicador-valor">0</strong>
           </div>
           <div class="indicador">
-            <span class="indicador-rotulo">Melhor nota</span>
+            <span class="indicador-rotulo">Melhor rota</span>
             <strong id="indicador-melhor" class="indicador-valor texto-destaque">-</strong>
           </div>
           <div class="indicador">
-            <span class="indicador-rotulo">Nota média da população</span>
+            <span class="indicador-rotulo">Média da população</span>
             <strong id="indicador-media" class="indicador-valor">-</strong>
           </div>
           <div class="indicador">
-            <span class="indicador-rotulo">Variações avaliadas</span>
-            <strong id="indicador-variacoes" class="indicador-valor">-</strong>
+            <span class="indicador-rotulo">Melhora desde o início</span>
+            <strong id="indicador-melhora" class="indicador-valor">-</strong>
           </div>
         </div>
 
-        <section class="cartao">
-          <div class="cabecalho-da-vitrine">
-            <h2>Melhor interface da geração</h2>
-            <span id="selo-de-estado" class="selo-de-estado">Pronto para evoluir</span>
-          </div>
-          <div class="vitrine">
-            <div id="melhor-maquete"></div>
-            <div>
-              <div class="cabecalho-da-vitrine">
-                <span class="observacao">Nota de 0 a 100 (soma ponderada das métricas)</span>
-                <span id="nota-do-melhor" class="nota-grande">-</span>
-              </div>
-              <ul id="lista-de-metricas" class="lista-de-metricas"></ul>
-            </div>
-          </div>
-        </section>
+        <div class="moldura-do-mapa">
+          <div id="mapa" class="mapa" aria-label="Mapa com as cidades e a melhor rota"></div>
+          <div id="selo-de-estado" class="selo-de-estado">Pronto para evoluir</div>
+        </div>
+        <p class="dica">Clique no mapa para adicionar um ponto. Clique em um ponto para removê-lo.</p>
 
         <div class="barra-de-controles">
           <div class="grupo-de-botoes">
             <button id="botao-evoluir" class="botao botao-principal" type="button">▶ Evoluir</button>
             <button id="botao-passo" class="botao" type="button">⏭ Próxima geração</button>
-            <button id="botao-reiniciar" class="botao" type="button" title="Sorteia uma nova população aleatória">↺ Nova população</button>
+            <button id="botao-reiniciar" class="botao" type="button" title="Nova população aleatória com os mesmos pontos">↺ Reiniciar população</button>
           </div>
           <div class="controle-de-velocidade">
             <button id="botao-mais-devagar" class="botao botao-icone" type="button" aria-label="Desacelerar">−</button>
-            <input id="controle-velocidade" type="range" min="0" max="7" step="1" value="1" aria-label="Velocidade" />
+            <input id="controle-velocidade" type="range" min="0" max="7" step="1" value="4" aria-label="Velocidade" />
             <button id="botao-mais-rapido" class="botao botao-icone" type="button" aria-label="Acelerar">+</button>
             <span id="rotulo-velocidade" class="rotulo-velocidade"></span>
           </div>
@@ -76,24 +73,18 @@
 
         <section class="cartao">
           <div class="titulo-com-legenda">
-            <h2>Evolução da nota</h2>
+            <h2>Evolução da distância</h2>
             <ul class="legenda">
-              <li><span class="amostra amostra-melhor"></span>Melhor indivíduo</li>
+              <li><span class="amostra amostra-melhor"></span>Melhor rota</li>
               <li><span class="amostra amostra-media"></span>Média da população</li>
             </ul>
           </div>
-          <canvas id="grafico-evolucao" class="grafico" aria-label="Gráfico da evolução da nota"></canvas>
+          <canvas id="grafico-evolucao" class="grafico" aria-label="Gráfico da evolução da distância"></canvas>
         </section>
 
         <section class="cartao">
-          <h2>População atual (ordenada pela nota)</h2>
-          <div id="grade-da-populacao" class="grade-da-populacao"></div>
-          <p class="observacao">As bordas roxas marcam a elite, que passa direto para a próxima geração.</p>
-        </section>
-
-        <section class="cartao">
-          <h2>Como um filho da última geração foi criado</h2>
-          <div id="anatomia-da-geracao">
+          <h2>Como a última geração foi criada</h2>
+          <div id="anatomia-da-geracao" class="anatomia">
             <p class="observacao">Evolua uma geração para ver a seleção, o cruzamento e a mutação acontecendo.</p>
           </div>
         </section>
@@ -101,11 +92,35 @@
 
       <aside class="painel-lateral">
         <section class="cartao">
+          <h2>Pontos</h2>
+          <label class="campo">
+            <span>Conjunto de pontos</span>
+            <select id="selecao-conjunto">
+              <option value="capitais">27 capitais do Brasil</option>
+              <option value="sorteio">Cidades sorteadas</option>
+              <option value="personalizado">Meus pontos (clique no mapa)</option>
+            </select>
+          </label>
+          <div class="campo">
+            <span>Quantidade de cidades sorteadas</span>
+            <div class="campo-com-valor">
+              <input id="quantidade-sorteio" type="range" min="5" max="77" value="20" />
+              <span id="rotulo-quantidade-sorteio" class="valor-do-campo"></span>
+            </div>
+          </div>
+          <div class="grupo-de-botoes">
+            <button id="botao-sortear" class="botao botao-pequeno" type="button">🎲 Sortear cidades</button>
+            <button id="botao-limpar" class="botao botao-pequeno" type="button">Limpar pontos</button>
+          </div>
+          <p id="resumo-dos-pontos" class="observacao"></p>
+        </section>
+
+        <section class="cartao">
           <h2>Parâmetros do algoritmo</h2>
           <div class="campo">
             <span>Tamanho da população</span>
             <div class="campo-com-valor">
-              <input id="parametro-populacao" type="range" min="10" max="120" step="2" value="40" />
+              <input id="parametro-populacao" type="range" min="10" max="400" step="10" value="120" />
               <span id="rotulo-populacao" class="valor-do-campo"></span>
             </div>
           </div>
@@ -117,17 +132,10 @@
             </div>
           </div>
           <div class="campo">
-            <span>Chance de mutação de cada gene</span>
+            <span>Taxa de mutação</span>
             <div class="campo-com-valor">
-              <input id="parametro-mutacao" type="range" min="0" max="60" step="1" value="15" />
+              <input id="parametro-mutacao" type="range" min="0" max="100" step="5" value="50" />
               <span id="rotulo-mutacao" class="valor-do-campo"></span>
-            </div>
-          </div>
-          <div class="campo">
-            <span>Intensidade da mutação</span>
-            <div class="campo-com-valor">
-              <input id="parametro-intensidade" type="range" min="1" max="50" step="1" value="10" />
-              <span id="rotulo-intensidade" class="valor-do-campo"></span>
             </div>
           </div>
           <div class="campo">
@@ -147,34 +155,30 @@
           <div class="campo">
             <span>Parar após gerações sem melhora</span>
             <div class="campo-com-valor">
-              <input id="parametro-parada" type="range" min="20" max="1000" step="10" value="150" />
+              <input id="parametro-parada" type="range" min="50" max="2000" step="50" value="800" />
               <span id="rotulo-parada" class="valor-do-campo"></span>
             </div>
           </div>
-          <p class="observacao">Os parâmetros valem já na próxima geração. A evolução também para ao atingir nota 100.</p>
+          <p class="observacao">Os parâmetros valem já na próxima geração.</p>
         </section>
 
         <section class="cartao">
           <h2>Estatísticas</h2>
           <dl class="estatisticas">
-            <dt>Pior nota da população</dt>
+            <dt>Pior rota da população</dt>
             <dd id="estatistica-pior">-</dd>
-            <dt>Nota inicial do melhor</dt>
-            <dd id="estatistica-inicial">-</dd>
+            <dt>Rotas diferentes na população</dt>
+            <dd id="estatistica-diversidade">-</dd>
+            <dt>Rotas avaliadas no total</dt>
+            <dd id="estatistica-avaliadas">-</dd>
             <dt>Última melhora</dt>
             <dd id="estatistica-ultima-melhora">-</dd>
-            <dt>Semente da população</dt>
-            <dd id="estatistica-semente">-</dd>
           </dl>
         </section>
 
         <section class="cartao">
-          <h2>O que a nota mede</h2>
-          <p class="observacao">
-            Contraste de cores pelo padrão WCAG, tamanho da fonte, altura da linha, área de toque do botão (44–56 px),
-            margens, grade de 8 px, caracteres por linha e se o conteúdo ocupa bem a tela sem transbordar. Cada métrica
-            vale de 0 a 1 e tem um peso; a nota final é a soma ponderada.
-          </p>
+          <h2>Melhor rota encontrada</h2>
+          <ol id="lista-da-rota" class="lista-da-rota"></ol>
         </section>
       </aside>
     </main>
@@ -182,6 +186,9 @@
     <script>
       if (location.protocol === 'file:') {
         document.getElementById('aviso-arquivo-local').hidden = false;
+      }
+      if (typeof L === 'undefined') {
+        document.getElementById('aviso-sem-mapa').hidden = false;
       }
     </script>
   </body>
