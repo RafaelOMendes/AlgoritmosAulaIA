@@ -197,7 +197,7 @@ def fazer_rodada_in_place(estado: Estado, movimento_do_azul: str, movimento_do_l
 
 def desfazer_rodada_in_place(estado: Estado, reversao: ReversaoDeRodada) -> None:
     estado.rodada -= 1
-    
+
     if reversao.celula_modificada_azul is not None:
         estado.celulas[reversao.celula_modificada_azul] = CELULA_LIVRE
         estado.trilhas["azul"].pop()

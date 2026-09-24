@@ -1,3 +1,4 @@
+import copy
 import random
 import unittest
 
@@ -15,13 +16,15 @@ from logica.jogo import (
     aplicar_rodada,
     criar_estado_inicial,
     descrever_causa_da_colisao,
+    desfazer_rodada_in_place,
+    fazer_rodada_in_place,
     jogo_terminou,
     movimentos_possiveis,
     movimentos_seguros,
     vencedor_do_jogo,
 )
 from logica.labirinto import gerar_labirinto
-from logica.tabuleiro import CELULA_LIVRE
+from logica.tabuleiro import CELULA_LIVRE, ORDEM_DAS_DIRECOES
 from testes.auxiliares import criar_estado_a_partir_do_mapa
 
 
@@ -85,6 +88,25 @@ class TestesDasRegrasDoJogo(unittest.TestCase):
         estado = aplicar_rodada(estado, "baixo", "cima")
         self.assertEqual(estado.trilhas["azul"], [0, 1, 6])
         self.assertEqual(estado.trilhas["laranja"], [24, 19, 14])
+
+    def test_fazer_e_desfazer_no_proprio_estado_equivale_a_aplicar_a_rodada_numa_copia(self):
+        gerador_aleatorio = random.Random(2)
+        for semente in range(8):
+            estado = criar_estado_inicial(gerar_labirinto(11, semente))
+            while not jogo_terminou(estado):
+                estado_original = copy.deepcopy(estado)
+                for movimento_do_azul in ORDEM_DAS_DIRECOES:
+                    for movimento_do_laranja in ORDEM_DAS_DIRECOES:
+                        estado_esperado = aplicar_rodada(estado, movimento_do_azul, movimento_do_laranja)
+                        reversao = fazer_rodada_in_place(estado, movimento_do_azul, movimento_do_laranja)
+                        self.assertEqual(estado, estado_esperado)
+                        desfazer_rodada_in_place(estado, reversao)
+                        self.assertEqual(estado, estado_original)
+                estado = aplicar_rodada(
+                    estado,
+                    gerador_aleatorio.choice(movimentos_possiveis(estado, "azul")),
+                    gerador_aleatorio.choice(movimentos_possiveis(estado, "laranja")),
+                )
 
 
 class TestesDaFuncaoDeAvaliacao(unittest.TestCase):

@@ -1,13 +1,25 @@
-import math
-import time
 import concurrent.futures
+import math
+import signal
+import threading
+import time
 from dataclasses import dataclass, field
 
 from .avaliacao import AvaliacaoDaPosicao, avaliar_posicao
-from .jogo import Estado, aplicar_rodada_por_papel, fazer_rodada_por_papel_in_place, desfazer_rodada_in_place, jogo_terminou, movimentos_possiveis, oponente_de
+from .jogo import (
+    Estado,
+    desfazer_rodada_in_place,
+    fazer_rodada_por_papel_in_place,
+    jogo_terminou,
+    movimentos_possiveis,
+    oponente_de,
+)
+from .tabuleiro import ORDEM_DAS_DIRECOES
 
 VALOR_DE_VITORIA = 1000
 VALOR_DE_EMPATE = -VALOR_DE_VITORIA // 2
+
+PROFUNDIDADE_MINIMA_PARA_PARALELIZAR = 5
 
 NO_MAX = "MAX"
 NO_MIN = "MIN"
@@ -58,6 +70,28 @@ class ResultadoDaBusca:
     ramos_podados: int
     tempo_em_milissegundos: float
     arvore: NoDaArvore | None
+
+
+@dataclass(frozen=True)
+class RamoDaRaiz:
+    jogador_maximizador: str
+    movimento_do_maximizador: str
+    estado: Estado
+    profundidade_em_rodadas: int
+    usar_poda_alfa_beta: bool
+    registrar_arvore: bool
+
+
+@dataclass(frozen=True)
+class ResultadoDoRamoDaRaiz:
+    valor: float
+    nos_visitados: int
+    ramos_podados: int
+    no: NoDaArvore | None
+
+
+_executor_de_processos: concurrent.futures.ProcessPoolExecutor | None = None
+_trava_do_executor = threading.Lock()
 
 
 def _criar_no_filho(
@@ -205,39 +239,105 @@ def _valor_no_minimizador(
     return menor_valor, melhor_movimento
 
 
-def _trabalhador_raiz(argumentos) -> tuple:
-    (
-        jogador_maximizador,
-        jogador_minimizador,
-        movimento,
-        estado,
-        rodadas_restantes,
-        usar_poda_alfa_beta,
-        registrar_arvore,
-    ) = argumentos
-
+def _avaliar_ramo_da_raiz(ramo: RamoDaRaiz) -> ResultadoDoRamoDaRaiz:
+    jogador_minimizador = oponente_de(ramo.jogador_maximizador)
     contexto = ContextoDaBusca(
-        jogador_maximizador=jogador_maximizador,
+        jogador_maximizador=ramo.jogador_maximizador,
         jogador_minimizador=jogador_minimizador,
-        usar_poda_alfa_beta=usar_poda_alfa_beta,
+        usar_poda_alfa_beta=ramo.usar_poda_alfa_beta,
     )
-    
-    no_filho = None
-    if registrar_arvore:
-        no_filho = NoDaArvore(
+    no_do_ramo = (
+        NoDaArvore(
             tipo=NO_MIN,
             jogador_da_vez=jogador_minimizador,
-            jogador_que_moveu=jogador_maximizador,
-            movimento=movimento,
+            jogador_que_moveu=ramo.jogador_maximizador,
+            movimento=ramo.movimento_do_maximizador,
             alfa_na_entrada=-math.inf,
             beta_na_entrada=math.inf,
         )
-
-    valor, _ = _valor_no_minimizador(
-        contexto, estado, movimento, rodadas_restantes, -math.inf, math.inf, no_filho
+        if ramo.registrar_arvore
+        else None
     )
-    
-    return valor, movimento, contexto.nos_visitados, contexto.ramos_podados, no_filho
+    valor, _ = _valor_no_minimizador(
+        contexto,
+        ramo.estado,
+        ramo.movimento_do_maximizador,
+        ramo.profundidade_em_rodadas,
+        -math.inf,
+        math.inf,
+        no_do_ramo,
+    )
+    return ResultadoDoRamoDaRaiz(valor, contexto.nos_visitados, contexto.ramos_podados, no_do_ramo)
+
+
+def _ignorar_ctrl_c_nos_processos_auxiliares() -> None:
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
+def _obter_executor_de_processos() -> concurrent.futures.ProcessPoolExecutor:
+    global _executor_de_processos
+    with _trava_do_executor:
+        if _executor_de_processos is None:
+            _executor_de_processos = concurrent.futures.ProcessPoolExecutor(
+                max_workers=len(ORDEM_DAS_DIRECOES),
+                initializer=_ignorar_ctrl_c_nos_processos_auxiliares,
+            )
+        return _executor_de_processos
+
+
+def _descartar_executor_com_defeito(executor: concurrent.futures.ProcessPoolExecutor) -> None:
+    global _executor_de_processos
+    with _trava_do_executor:
+        if _executor_de_processos is executor:
+            _executor_de_processos = None
+    executor.shutdown(wait=False, cancel_futures=True)
+
+
+def deve_paralelizar_a_raiz(profundidade_em_rodadas: int) -> bool:
+    return profundidade_em_rodadas >= PROFUNDIDADE_MINIMA_PARA_PARALELIZAR
+
+
+def _buscar_com_a_raiz_em_paralelo(
+    contexto: ContextoDaBusca,
+    estado: Estado,
+    movimentos: list[str],
+    profundidade_em_rodadas: int,
+    raiz: NoDaArvore | None,
+) -> tuple[float, str | None]:
+    ramos = [
+        RamoDaRaiz(
+            jogador_maximizador=contexto.jogador_maximizador,
+            movimento_do_maximizador=movimento,
+            estado=estado,
+            profundidade_em_rodadas=profundidade_em_rodadas,
+            usar_poda_alfa_beta=contexto.usar_poda_alfa_beta,
+            registrar_arvore=raiz is not None,
+        )
+        for movimento in movimentos
+    ]
+    executor = _obter_executor_de_processos()
+    try:
+        resultados = list(executor.map(_avaliar_ramo_da_raiz, ramos))
+    except (concurrent.futures.BrokenExecutor, OSError):
+        _descartar_executor_com_defeito(executor)
+        return _valor_no_maximizador(contexto, estado, profundidade_em_rodadas, -math.inf, math.inf, raiz)
+
+    contexto.nos_visitados += 1
+    melhor_valor = -math.inf
+    melhor_movimento = None
+    indice_do_melhor_filho = -1
+    for indice, (movimento, resultado) in enumerate(zip(movimentos, resultados)):
+        contexto.nos_visitados += resultado.nos_visitados
+        contexto.ramos_podados += resultado.ramos_podados
+        if raiz is not None:
+            raiz.filhos.append(resultado.no)
+        if resultado.valor > melhor_valor:
+            melhor_valor = resultado.valor
+            melhor_movimento = movimento
+            indice_do_melhor_filho = indice
+
+    _concluir_no_interno(raiz, melhor_valor, -math.inf, math.inf, indice_do_melhor_filho)
+    return melhor_valor, melhor_movimento
 
 
 def buscar_melhor_movimento(
@@ -246,6 +346,7 @@ def buscar_melhor_movimento(
     profundidade_em_rodadas: int,
     usar_poda_alfa_beta: bool = True,
     registrar_arvore: bool = False,
+    paralelizar_a_raiz: bool | None = None,
 ) -> ResultadoDaBusca:
     contexto = ContextoDaBusca(
         jogador_maximizador=jogador_maximizador,
@@ -264,61 +365,32 @@ def buscar_melhor_movimento(
         if registrar_arvore
         else None
     )
+    if paralelizar_a_raiz is None:
+        paralelizar_a_raiz = deve_paralelizar_a_raiz(profundidade_em_rodadas)
+    movimentos_da_raiz = movimentos_possiveis(estado, jogador_maximizador)
+    vale_a_pena_paralelizar = (
+        paralelizar_a_raiz
+        and profundidade_em_rodadas > 0
+        and not jogo_terminou(estado)
+        and len(movimentos_da_raiz) > 1
+    )
 
     inicio = time.perf_counter()
-    
-    if jogo_terminou(estado) or profundidade_em_rodadas == 0:
+    if vale_a_pena_paralelizar:
+        valor, melhor_movimento = _buscar_com_a_raiz_em_paralelo(
+            contexto, estado, movimentos_da_raiz, profundidade_em_rodadas, raiz
+        )
+    else:
         valor, melhor_movimento = _valor_no_maximizador(
             contexto, estado, profundidade_em_rodadas, -math.inf, math.inf, raiz
         )
-    else:
-        contexto.nos_visitados += 1
-        movimentos = movimentos_possiveis(estado, contexto.jogador_maximizador)
-        
-        argumentos_por_movimento = [
-            (
-                jogador_maximizador,
-                contexto.jogador_minimizador,
-                movimento,
-                estado,
-                profundidade_em_rodadas,
-                usar_poda_alfa_beta,
-                registrar_arvore
-            )
-            for movimento in movimentos
-        ]
-        
-        melhor_valor = -math.inf
-        melhor_movimento = None
-        indice_do_melhor_filho = -1
-        
-        with concurrent.futures.ProcessPoolExecutor() as executor:
-            resultados = list(executor.map(_trabalhador_raiz, argumentos_por_movimento))
-            
-        for indice, resultado in enumerate(resultados):
-            valor_movimento, movimento, nos_visitados, ramos_podados, no_filho = resultado
-            
-            contexto.nos_visitados += nos_visitados
-            contexto.ramos_podados += ramos_podados
-            
-            if raiz is not None and no_filho is not None:
-                raiz.filhos.append(no_filho)
-                
-            if valor_movimento > melhor_valor:
-                melhor_valor = valor_movimento
-                melhor_movimento = movimento
-                indice_do_melhor_filho = indice
-
-        _concluir_no_interno(raiz, melhor_valor, -math.inf, math.inf, indice_do_melhor_filho)
-        valor = melhor_valor
-
     tempo_em_milissegundos = (time.perf_counter() - inicio) * 1000
 
     return ResultadoDaBusca(
         jogador_maximizador=jogador_maximizador,
         profundidade_em_rodadas=profundidade_em_rodadas,
         usar_poda_alfa_beta=usar_poda_alfa_beta,
-        movimento=melhor_movimento or movimentos_possiveis(estado, jogador_maximizador)[0],
+        movimento=melhor_movimento or movimentos_da_raiz[0],
         valor=valor,
         nos_visitados=contexto.nos_visitados,
         ramos_podados=contexto.ramos_podados,

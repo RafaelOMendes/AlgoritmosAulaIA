@@ -2,15 +2,17 @@ import json
 import random
 import unittest
 
-from logica.api import ROTAS_DA_API
+from logica.api import PROFUNDIDADE_MAXIMA_DA_ARVORE, ROTAS_DA_API, ErroDeRequisicao
 from logica.estrategias import ConfiguracaoDoAgente, decidir_movimento
 from logica.jogo import aplicar_rodada, criar_estado_inicial, jogo_terminou, movimentos_possiveis, vencedor_do_jogo
 from logica.labirinto import gerar_labirinto
 from logica.minimax import (
+    PROFUNDIDADE_MINIMA_PARA_PARALELIZAR,
     VALOR_DE_EMPATE,
     VALOR_DE_VITORIA,
     VALOR_EXATO,
     buscar_melhor_movimento,
+    deve_paralelizar_a_raiz,
     obter_caminho_principal,
     valor_indica_derrota,
     valor_indica_vitoria,
@@ -120,6 +122,30 @@ class TestesDoMinimax(unittest.TestCase):
         self.assertIsNone(buscar_melhor_movimento(estado, "azul", 2).arvore)
 
 
+class TestesDaBuscaComARaizEmParalelo(unittest.TestCase):
+    def test_so_paraleliza_a_partir_da_profundidade_minima(self):
+        self.assertFalse(deve_paralelizar_a_raiz(PROFUNDIDADE_MINIMA_PARA_PARALELIZAR - 1))
+        self.assertTrue(deve_paralelizar_a_raiz(PROFUNDIDADE_MINIMA_PARA_PARALELIZAR))
+
+    def test_encontra_a_mesma_jogada_e_o_mesmo_valor_que_a_busca_sequencial(self):
+        for estado in gerar_estados_de_meio_de_jogo()[::3]:
+            for jogador in ("azul", "laranja"):
+                sequencial = buscar_melhor_movimento(estado, jogador, 3, paralelizar_a_raiz=False)
+                paralela = buscar_melhor_movimento(estado, jogador, 3, paralelizar_a_raiz=True)
+                self.assertEqual((paralela.movimento, paralela.valor), (sequencial.movimento, sequencial.valor))
+                self.assertGreaterEqual(paralela.nos_visitados, sequencial.nos_visitados)
+
+    def test_registra_uma_arvore_coerente_e_sem_poda_na_raiz(self):
+        estado = criar_estado_inicial(gerar_labirinto(13, 5))
+        busca = buscar_melhor_movimento(estado, "azul", 3, registrar_arvore=True, paralelizar_a_raiz=True)
+        self.assertEqual(contar_nos(busca.arvore, lambda no: not no.podado), busca.nos_visitados)
+        self.assertEqual(contar_nos(busca.arvore, lambda no: no.podado), busca.ramos_podados)
+        self.assertEqual(obter_caminho_principal(busca.arvore)[1].movimento, busca.movimento)
+        self.assertFalse(any(filho.podado for filho in busca.arvore.filhos))
+        for filho in busca.arvore.filhos:
+            self.assertEqual(filho.tipo_do_valor, VALOR_EXATO)
+
+
 class TestesDasEstrategiasEDaPartida(unittest.TestCase):
     def test_estrategia_gulosa_foge_do_beco_sem_saida(self):
         estado = criar_estado_a_partir_do_mapa(MAPA_COM_BECO_SEM_SAIDA)
@@ -178,6 +204,18 @@ class TestesDaApi(unittest.TestCase):
         self.assertEqual(rodada["numeroDaRodada"], 1)
         self.assertIsNone(arvore["arvore"]["alfaNaEntrada"])
         self.assertEqual(estado_do_no["movimentoPendente"]["movimento"], arvore["movimento"])
+
+    def test_recusa_desenhar_a_arvore_acima_da_profundidade_maxima_da_arvore(self):
+        partida = ROTAS_DA_API["/api/nova-partida"]({"tamanho": 13, "semente": 7})
+        configuracao_profunda_demais = {
+            "estrategia": "minimax",
+            "profundidadeEmRodadas": PROFUNDIDADE_MAXIMA_DA_ARVORE + 1,
+            "usarPodaAlfaBeta": True,
+        }
+        with self.assertRaises(ErroDeRequisicao):
+            ROTAS_DA_API["/api/arvore"](
+                {"estado": partida["estado"], "jogador": "azul", "configuracaoDoAgente": configuracao_profunda_demais}
+            )
 
     def test_mesma_semente_gera_o_mesmo_labirinto_pela_api(self):
         primeira = ROTAS_DA_API["/api/nova-partida"]({"tamanho": 17, "semente": 99})

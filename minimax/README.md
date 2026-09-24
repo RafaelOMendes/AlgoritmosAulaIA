@@ -64,10 +64,12 @@ python servidor.py 8080
 Configurações do painel lateral:
 
 - **Tamanho do labirinto**: 13 × 13, 17 × 17 ou 21 × 21 (gera um labirinto novo).
-- **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 5). Cada rodada são 2 níveis da árvore.
+- **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 7). Cada rodada são 2 níveis da árvore.
+  A partir da profundidade 5, os movimentos da raiz são calculados em paralelo, em processos separados; na
+  profundidade 7, a primeira jogada leva cerca de 4 segundos.
 - **Estratégia do Laranja**: Minimax (com profundidade própria), Guloso ou Aleatório.
 - **Usar poda alfa-beta**: liga ou desliga a otimização (o resultado é o mesmo; muda a quantidade de nós visitados).
-  Sem poda e com profundidade 5, cada jogada pode levar alguns segundos.
+  Sem poda e com profundidade 5 ou mais, cada jogada pode levar vários segundos.
 - **Mostrar território**: pinta cada célula livre com a cor de quem chega nela primeiro. É exatamente o que a função de avaliação do Minimax mede.
 
 No modal da árvore:
@@ -75,6 +77,8 @@ No modal da árvore:
 - **Clique em um nó** para abrir ou fechar os filhos e ver os detalhes no painel da direita (tabuleiro daquele momento, valor, janela alfa-beta e o motivo da escolha).
 - **Expandir caminho escolhido**, **Expandir mais um nível**, **Recolher tudo** e **zoom** (− / +).
 - Troque o **Agente** para ver a árvore do Laranja, quando ele também usa Minimax.
+- A árvore é desenhada até a profundidade 5. Acima disso ela passa de centenas de milhares de nós, e o modal mostra um
+  aviso.
 
 ## Como rodar os testes
 
@@ -84,8 +88,21 @@ Dentro da pasta `minimax`:
 python -m unittest -v
 ```
 
-São 27 testes (`unittest`, da biblioteca padrão) cobrindo a geração do labirinto, as regras do jogo, a função de
-avaliação, o Minimax, a poda alfa-beta, partidas completas e a API usada pela página.
+São 33 testes (`unittest`, da biblioteca padrão) cobrindo a geração do labirinto, as regras do jogo, a função de
+avaliação, o Minimax, a poda alfa-beta, a busca com a raiz em paralelo, partidas completas e a API usada pela página.
+O teste que compara com a versão em C++ só roda onde a biblioteca compilada funciona (Linux); no Windows ele aparece
+como `skipped`.
+
+## Versão experimental em C++ (opcional)
+
+A pasta `logica/` também tem o mesmo Minimax escrito em C++ (`minimax.cpp`), chamado pelo Python com `ctypes`
+(`minimax_cpp_wrapper.py`). A página **não usa** essa versão: ela serve para comparar a velocidade (cerca de 30 vezes
+mais rápida) e é conferida por um teste automático. A biblioteca `minimax_cpp_lib.so` já vem compilada para Linux.
+Para compilar de novo, no Linux ou no WSL, dentro da pasta `logica`:
+
+```bash
+g++ -shared -fPIC -O3 -std=c++11 -pthread minimax.cpp -o minimax_cpp_lib.so
+```
 
 ## Estrutura dos arquivos
 
@@ -95,12 +112,15 @@ minimax/
 ├── logica/                       O algoritmo, em Python
 │   ├── tabuleiro.py              Células, direções e vizinhos de cada posição do grid
 │   ├── labirinto.py              Geração aleatória e simétrica do labirinto
-│   ├── jogo.py                   Estado da partida, movimentos e colisões
+│   ├── jogo.py                   Estado da partida, movimentos, colisões e fazer/desfazer rodada
 │   ├── avaliacao.py              Função de avaliação (território por busca em largura)
-│   ├── minimax.py                Minimax com poda alfa-beta e registro da árvore
+│   ├── minimax.py                Minimax com poda alfa-beta, raiz em paralelo e registro da árvore
 │   ├── estrategias.py            Agentes: Minimax, Guloso e Aleatório
 │   ├── partida.py                Rodadas, simulação de partidas e reconstrução da árvore
-│   └── api.py                    Converte pedidos e respostas da página para JSON
+│   ├── api.py                    Converte pedidos e respostas da página para JSON
+│   ├── minimax.cpp               Versão experimental do Minimax em C++ (não usada pela página)
+│   ├── minimax_cpp_wrapper.py    Chama a versão em C++ a partir do Python (ctypes)
+│   └── minimax_cpp_lib.so        Versão em C++ já compilada para Linux
 ├── testes/                       Testes automatizados (unittest)
 ├── index.html                    Estrutura da página e do modal da árvore
 ├── estilos.css                   Visual (tema escuro estilo Tron)

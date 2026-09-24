@@ -234,8 +234,8 @@ async function evoluirContinuamente(identificadorDoCiclo) {
   while (aplicacao.emExecucao && aplicacao.identificadorDoCiclo === identificadorDoCiclo) {
     const inicio = performance.now();
     const velocidade = geracoesPorSegundo();
-    const duracaoDoCiclo = Math.max(1000 / velocidade, DURACAO_MINIMA_DO_CICLO);
-    const geracoesNoCiclo = Math.max(1, Math.round((velocidade * duracaoDoCiclo) / 1000));
+    const geracoesNoCiclo = Math.max(1, Math.ceil((velocidade * DURACAO_MINIMA_DO_CICLO) / 1000));
+    const duracaoDoCiclo = (geracoesNoCiclo * 1000) / velocidade;
     const podeContinuar = await evoluirNoServidor(geracoesNoCiclo);
     if (aplicacao.identificadorDoCiclo !== identificadorDoCiclo) {
       return;

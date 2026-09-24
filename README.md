@@ -6,7 +6,7 @@ executa o algoritmo e entrega a página; o JavaScript cuida apenas da interface.
 
 | Pasta | Algoritmo | Problema |
 |---|---|---|
-| [`minimax/`](minimax/) | Minimax com poda alfa-beta | Fuga no Labirinto (estilo Tron): duas motos de luz disputam espaço num labirinto aleatório, e o agente escolhe o movimento que maximiza o próprio espaço e minimiza o do oponente |
+| [`minimax/`](minimax/) | Minimax com poda alfa-beta (raiz em paralelo a partir da profundidade 5, e uma versão experimental em C++) | Fuga no Labirinto (estilo Tron): duas motos de luz disputam espaço num labirinto aleatório, e o agente escolhe o movimento que maximiza o próprio espaço e minimiza o do oponente |
 | [`genetico/`](genetico/) | Algoritmo genético | Caixeiro Viajante: a menor rota entre cidades brasileiras (ou pontos clicados) num mapa real |
 
 ## Requisitos

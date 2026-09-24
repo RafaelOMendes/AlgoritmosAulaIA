@@ -13,6 +13,11 @@ const uint8_t PAREDE = 1;
 const uint8_t RASTRO_AZUL = 2;
 const uint8_t RASTRO_LARANJA = 3;
 
+const uint8_t SEM_DONO = 0;
+const uint8_t DONO_AZUL = 1;
+const uint8_t DONO_LARANJA = 2;
+const uint8_t DISPUTADA = 3;
+
 const int FORA = -1;
 
 const int CIMA = 0;
@@ -52,7 +57,6 @@ struct Contexto {
     int ramos_podados;
 };
 
-// Tabelas globais para performance
 vector<vector<int>> vizinhos;
 vector<vector<int>> vizinhos_validos;
 
@@ -88,7 +92,7 @@ vector<int> movimentos_possiveis(const Estado& e, bool azul) {
         int viz = vizinhos[pos][d];
         if (celula_livre(e, viz)) movs.push_back(d);
     }
-    if (movs.empty()) movs.push_back(0); // Último movimento (fallback simplificado)
+    if (movs.empty()) movs.push_back(CIMA);
     return movs;
 }
 
@@ -131,7 +135,7 @@ void desfazer_rodada(Estado& e, const Reversao& rev) {
 
 int calcular_territorios(const Estado& e, bool max_eh_azul) {
     int n = e.tamanho * e.tamanho;
-    vector<uint8_t> dono(n, LIVRE);
+    vector<uint8_t> dono(n, SEM_DONO);
     vector<int> camada_alcance(n, FORA);
     
     vector<int> front_azul = {e.pos_azul};
@@ -143,8 +147,8 @@ int calcular_territorios(const Estado& e, bool max_eh_azul) {
         vector<int> prox_azul;
         for (int c : front_azul) {
             for (int v : vizinhos_validos[c]) {
-                if (e.celulas[v] == LIVRE && dono[v] == LIVRE) {
-                    dono[v] = 1; // 1 = Azul
+                if (e.celulas[v] == LIVRE && dono[v] == SEM_DONO) {
+                    dono[v] = DONO_AZUL;
                     camada_alcance[v] = camada;
                     prox_azul.push_back(v);
                 }
@@ -155,12 +159,12 @@ int calcular_territorios(const Estado& e, bool max_eh_azul) {
         for (int c : front_laranja) {
             for (int v : vizinhos_validos[c]) {
                 if (e.celulas[v] != LIVRE) continue;
-                if (dono[v] == LIVRE) {
-                    dono[v] = 2; // 2 = Laranja
+                if (dono[v] == SEM_DONO) {
+                    dono[v] = DONO_LARANJA;
                     camada_alcance[v] = camada;
                     prox_laranja.push_back(v);
-                } else if (dono[v] == 1 && camada_alcance[v] == camada) {
-                    dono[v] = 3; // 3 = Disputada
+                } else if (dono[v] == DONO_AZUL && camada_alcance[v] == camada) {
+                    dono[v] = DISPUTADA;
                     prox_laranja.push_back(v);
                 }
             }
@@ -171,8 +175,8 @@ int calcular_territorios(const Estado& e, bool max_eh_azul) {
     
     int t_azul = 0, t_laranja = 0;
     for (int i = 0; i < n; ++i) {
-        if (dono[i] == 1) t_azul++;
-        else if (dono[i] == 2) t_laranja++;
+        if (dono[i] == DONO_AZUL) t_azul++;
+        else if (dono[i] == DONO_LARANJA) t_laranja++;
     }
     return max_eh_azul ? (t_azul - t_laranja) : (t_laranja - t_azul);
 }

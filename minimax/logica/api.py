@@ -17,7 +17,8 @@ from .tabuleiro import DESLOCAMENTO_DE_CADA_DIRECAO, vizinho_na_direcao
 
 TAMANHO_MAXIMO_DO_LABIRINTO = 31
 PROFUNDIDADE_MINIMA = 1
-PROFUNDIDADE_MAXIMA = 10
+PROFUNDIDADE_MAXIMA = 7
+PROFUNDIDADE_MAXIMA_DA_ARVORE = 5
 
 
 class ErroDeRequisicao(ValueError):
@@ -179,6 +180,11 @@ def montar_arvore_de_decisao(dados: dict) -> dict:
     _exigir(jogador in JOGADORES, "Jogador desconhecido.")
     configuracao = configuracao_do_agente_de_json(dados["configuracaoDoAgente"])
     _exigir(configuracao.estrategia == "minimax", "Só agentes que usam Minimax têm árvore de decisão.")
+    _exigir(
+        configuracao.profundidade_em_rodadas <= PROFUNDIDADE_MAXIMA_DA_ARVORE,
+        f"A árvore só é desenhada até a profundidade {PROFUNDIDADE_MAXIMA_DA_ARVORE}: "
+        "acima disso ela passa de centenas de milhares de nós.",
+    )
     busca = reconstruir_arvore_de_decisao(estado, jogador, configuracao)
     return {
         "jogadorMaximizador": busca.jogador_maximizador,
