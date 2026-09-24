@@ -64,9 +64,10 @@ python servidor.py 8080
 Configurações do painel lateral:
 
 - **Tamanho do labirinto**: 13 × 13, 17 × 17 ou 21 × 21 (gera um labirinto novo).
-- **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 7). Cada rodada são 2 níveis da árvore.
-  A partir da profundidade 5, os movimentos da raiz são calculados em paralelo, em processos separados; na
-  profundidade 7, a primeira jogada leva cerca de 4 segundos.
+- **Profundidade do Azul**: quantas rodadas à frente o Minimax simula (1 a 10). Cada rodada são 2 níveis da árvore.
+  A partir da profundidade 5, os movimentos da raiz são calculados em paralelo, em processos separados. As
+  profundidades altas são lentas: no labirinto 17 × 17, a primeira jogada leva cerca de 4 s na profundidade 7, 33 s
+  na 9 e 1,5 min na 10 (no 13 × 13, a profundidade 10 levou 5 s). Uma busca em andamento não pode ser cancelada.
 - **Estratégia do Laranja**: Minimax (com profundidade própria), Guloso ou Aleatório.
 - **Usar poda alfa-beta**: liga ou desliga a otimização (o resultado é o mesmo; muda a quantidade de nós visitados).
   Sem poda e com profundidade 5 ou mais, cada jogada pode levar vários segundos.

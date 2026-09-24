@@ -76,7 +76,7 @@ clique em "Próximo passo"
 | **Nó MAX / nó MIN** | Nó em que quem escolhe é o Azul (quer o **maior** valor) / o Laranja (quer o **menor** valor). |
 | **Raiz** | O nó do topo: a situação atual do jogo, com a vez do Azul. |
 | **Folha** | Nó onde a simulação para: o jogo acabou ou a profundidade chegou ao limite. |
-| **Profundidade** | Quantas rodadas à frente o Minimax simula (de 1 a 7 na página). |
+| **Profundidade** | Quantas rodadas à frente o Minimax simula (de 1 a 10 na página). |
 | **Fator de ramificação** | Quantos filhos cada nó tem: no máximo 3 aqui, porque voltar é bater no próprio rastro (4 na primeira jogada). |
 | **Função de avaliação (heurística)** | A nota dada a uma folha que não é fim de jogo. Aqui: território do Azul − território do Laranja. |
 | **Valor minimax** | O valor que "sobe" da folha até a raiz: máximo nos nós MAX, mínimo nos nós MIN. |
@@ -123,14 +123,14 @@ e quem verifica o fim de jogo é o nó MAX seguinte.
 - **Raiz**: a situação atual do jogo, com a vez do Azul (nó MAX).
 - **Filhos de um nó MAX**: um nó MIN para cada direção segura do Azul.
 - **Filhos de um nó MIN**: um nó MAX para cada direção segura do Laranja, já com a rodada aplicada.
-- **Profundidade**: configurável de 1 a 7 **rodadas**, ou seja, de 2 a 14 níveis na árvore. O modal desenha a árvore
+- **Profundidade**: configurável de 1 a 10 **rodadas**, ou seja, de 2 a 20 níveis na árvore. O modal desenha a árvore
   até a profundidade 5 (seção 6.4).
 - **Fator de ramificação**: no máximo 3 por nível, porque voltar para trás é sempre bater no próprio rastro (na
   primeira jogada são 4, porque ainda não há rastro atrás). As direções que batem em algo nem são geradas; se não
   sobrar nenhuma, o agente é obrigado a seguir em frente e bater.
 
 A árvore cresce muito rápido. Com fator 3, cada rodada multiplica o número de folhas por até 3 × 3 = 9: com
-profundidade 4 (8 níveis) são até 3⁸ = 6.561 folhas, e com profundidade 7 (14 níveis), até 3¹⁴ ≈ 4,8 milhões. Na
+profundidade 4 (8 níveis) são até 3⁸ = 6.561 folhas, e com profundidade 10 (20 níveis), até 3²⁰ ≈ 3,5 bilhões. Na
 prática há menos, porque paredes e rastros eliminam direções, mas o crescimento continua **exponencial**. É por isso
 que existem a poda alfa-beta (seção 4) e o limite de profundidade.
 
@@ -473,9 +473,21 @@ projeto inteiro deixava de iniciar (`ImportError`). Por isso o nome é `minimax_
 
 ### 6.4 Limites de profundidade
 
-- **Para jogar: de 1 a 7.** Nas medições, cada rodada a mais multiplicou o trabalho por 2 a 4. Na profundidade 7, a
-  primeira jogada leva cerca de 4 s; na 8 foram 9 s (553 mil nós), e a página não tem como cancelar uma busca em
-  andamento. A versão enviada pelo colega permitia até 10, o que deixaria cada jogada com vários minutos.
+- **Para jogar: de 1 a 10.** Nas medições, cada rodada a mais multiplicou o trabalho por 2 a 4. Tempo da primeira
+  jogada no labirinto 17 × 17 da semente 7 (a mais cara, porque o labirinto ainda está vazio), com a raiz em paralelo:
+
+  | Profundidade | Nós visitados | Tempo |
+  |---|---|---|
+  | 7 | 236.598 | cerca de 4 s |
+  | 8 | 553.158 | 9 s |
+  | 9 | 2.047.898 | 33 s |
+  | 10 | 6.192.460 | 88 s |
+
+  Conforme os rastros ocupam o labirinto sobram menos direções livres, e as jogadas seguintes tendem a ser mais
+  rápidas. O tamanho do labirinto pesa muito: num 13 × 13 (semente 3), a profundidade 10 levou 5 s na primeira jogada,
+  então para demonstrar profundidades altas vale usar o labirinto menor. As profundidades 8 a 10 servem para mostrar o crescimento exponencial na prática. A página não tem como
+  cancelar uma busca em andamento: depois de pedir uma jogada, é preciso esperar ela terminar (ou parar o servidor com
+  Ctrl+C). Se os dois agentes usarem Minimax profundo, cada rodada leva a soma dos dois tempos.
 - **Para desenhar a árvore: até 5.** A árvore de profundidade 5 sem poda já tem 61.212 nós; a de 6 tem 319.054,
   dezenas de megabytes de JSON para o navegador desenhar. Acima de 5 o modal mostra um aviso explicando o limite.
 
@@ -615,7 +627,7 @@ A ponte entre o Python e o navegador:
 - **`estado_para_json`** / **`estado_de_json`**, **`territorios_para_json`**, **`decisao_para_json`** e
   **`no_para_json`**: convertem os objetos Python para JSON e de volta. Os valores ±∞ de α e β viram `null`, porque
   JSON não aceita infinito.
-- **`configuracao_do_agente_de_json`**: valida a estratégia e a profundidade (1 a 7) recebidas da página.
+- **`configuracao_do_agente_de_json`**: valida a estratégia e a profundidade (1 a 10) recebidas da página.
 - **`montar_arvore_de_decisao`**: recusa, com uma mensagem clara, árvores acima da profundidade 5.
 - **Rotas** (`ROTAS_DA_API`): `/api/configuracao` (estratégias e constantes do jogo), `/api/nova-partida`,
   `/api/jogar-rodada`, `/api/arvore` e `/api/estado-do-no`.
@@ -694,7 +706,7 @@ lados, para descontar qualquer vantagem de posição:
   Com 60 partidas de cada lado, o resultado se inverteu. Vinte partidas eram poucas para tirar conclusões.
 - **Desempenho**: uma decisão com profundidade 4 e poda leva cerca de 140 ms no início da partida e bem menos depois,
   quando sobra menos espaço livre. Na velocidade máxima, a página chegou a cerca de 29 rodadas por segundo. As
-  profundidades 5 a 7 usam a raiz em paralelo (seção 6.2).
+  profundidades 5 a 10 usam a raiz em paralelo (seção 6.2).
 
 ## 10. Decisões de projeto e limitações
 
