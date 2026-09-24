@@ -157,7 +157,18 @@ Com a poda, alguns valores da árvore deixam de ser exatos e passam a ser **limi
 12, e isso já basta para descartar este ramo"; `≥ 12` quer dizer "pelo menos 12". O modal da árvore mostra esses
 símbolos e os ramos podados tracejados. Os valores do caminho escolhido são sempre exatos.
 
-### 2.8 Como o Minimax entra em cada rodada da partida
+### 2.8 Paralelismo na Busca
+
+Para acelerar a decisão, a avaliação do **primeiro nível** da árvore (os movimentos possíveis da raiz) é feita em
+paralelo. O algoritmo usa `concurrent.futures.ProcessPoolExecutor` para distribuir cada ramo inicial para um
+processo separado, aproveitando múltiplos núcleos do processador.
+
+**Trade-off com a poda alfa-beta:** como os ramos da raiz são avaliados ao mesmo tempo em processos isolados,
+eles não compartilham os limites **α** e **β** entre si no nível mais alto. A poda alfa-beta continua funcionando
+dentro de cada ramo, mas uma poda na própria raiz deixa de ocorrer. Na prática, o ganho de tempo por usar
+vários núcleos compensa os nós extras visitados.
+
+### 2.9 Como o Minimax entra em cada rodada da partida
 
 A cada rodada, o navegador envia ao servidor Python a situação atual do jogo e a configuração dos agentes
 (rota `/api/jogar-rodada`). O Python então:
@@ -241,9 +252,11 @@ por extenso para explicar o que fazem.
 
 ### 4.5 `logica/minimax.py`: o algoritmo
 
-- **`buscar_melhor_movimento(estado, jogador_maximizador, profundidade_em_rodadas, usar_poda_alfa_beta,
-  registrar_arvore)`**: ponto de entrada. Devolve um `ResultadoDaBusca` com a melhor jogada, o valor, os nós
-  visitados, os ramos podados, o tempo e, se pedido, a árvore completa.
+- **`buscar_melhor_movimento(...)`**: ponto de entrada. Devolve um `ResultadoDaBusca` com a melhor jogada, valor e
+  estatísticas. Ele usa `concurrent.futures.ProcessPoolExecutor` para distribuir a avaliação dos movimentos da
+  raiz em processos paralelos, mapeando a função `_trabalhador_raiz` para cada opção possível.
+- **`_trabalhador_raiz`**: função executada de forma isolada por cada processo paralelo, que inicia a busca
+  (`_valor_no_minimizador`) para um ramo específico a partir da raiz.
 - **`_valor_no_maximizador`**: o nó MAX (equivale ao `MAX-VALUE` do livro de Russell e Norvig):
   1. se o jogo acabou, devolve o valor de vitória, derrota ou empate (`_avaliar_fim_de_jogo`);
   2. se chegou ao limite de profundidade, devolve a avaliação de território (`avaliar_posicao`);
@@ -374,8 +387,11 @@ lados, para descontar qualquer vantagem de posição:
 - **Python no servidor, interface no navegador**: o algoritmo ficou em Python e a tela em HTML/JavaScript, ligados
   por uma API JSON simples. O servidor não guarda estado, o que facilita os testes e permite abrir várias abas ao
   mesmo tempo. O custo é enviar o tabuleiro em cada pedido, algo pequeno (menos de 1.000 números).
-- **Velocidade do Python**: Python é mais lento que JavaScript para esse tipo de laço. Por isso a avaliação usa uma
-  única busca em largura e tabelas de vizinhos pré-calculadas. Sem poda, a profundidade 5 leva segundos por jogada.
+- **Velocidade do Python e Paralelismo**: Python é mais lento para esse tipo de laço e o GIL limita as threads.
+  Para compensar, o algoritmo usa tabelas pré-calculadas e **paraleliza** o primeiro nível da busca usando múltiplos
+  processos (`ProcessPoolExecutor`). Além disso, o projeto inclui uma versão experimental do Minimax escrita em **C++**
+  (`minimax.cpp` e `minimax_cpp_wrapper.py`), que usa `std::async` com threads nativas, provando que é possível
+  acelerar imensamente a busca usando linguagens de baixo nível para a lógica pesada.
 
 ## 7. Roteiro sugerido para a apresentação
 
